@@ -3,11 +3,7 @@ import pytest
 from tools import export_sprites as ex
 from tools.board import palette, themes
 
-TRANSIT = themes.get("transit")
-
-
-def _sprite(kind):
-    return TRANSIT.sprite("compact", kind)
+ALL_THEMES = themes.names()
 
 
 def test_transparent_is_index_zero():
@@ -22,36 +18,49 @@ def test_indices_fit_in_a_nibble():
     assert all(0 <= v <= 15 for v in ex.ROLE_INDEX.values())
 
 
-@pytest.mark.parametrize("name", ["bus", "train"])
+@pytest.mark.parametrize("name", ALL_THEMES)
 def test_packed_size_is_two_pixels_per_byte(name):
-    s = _sprite(name)
-    assert len(ex.pack(s)) == (s.width + 1) // 2 * s.height
+    for (size, kind), s in themes.get(name).sprites.items():
+        assert len(ex.pack(s)) == (s.width + 1) // 2 * s.height, \
+            f"{name}/{size}/{kind}"
 
 
-@pytest.mark.parametrize("name", ["bus", "train"])
+@pytest.mark.parametrize("name", ALL_THEMES)
 def test_pack_round_trips_back_to_the_original_grid(name):
-    s = _sprite(name)
-    data = ex.pack(s)
     rev = {v: k for k, v in ex.ROLE_INDEX.items()}
-    stride = (s.width + 1) // 2
-    for y, row in enumerate(s.rows):
-        for x, ch in enumerate(row):
-            byte = data[y * stride + x // 2]
-            nib = (byte >> 4) if x % 2 == 0 else (byte & 0x0F)
-            assert rev[nib] == ch, f"{name} mismatch at ({x},{y})"
+    for (size, kind), s in themes.get(name).sprites.items():
+        data = ex.pack(s)
+        stride = (s.width + 1) // 2
+        assert len(data) == stride * s.height
+        for y, row in enumerate(s.rows):
+            for x, ch in enumerate(row):
+                byte = data[y * stride + x // 2]
+                nib = (byte >> 4) if x % 2 == 0 else (byte & 0x0F)
+                assert rev[nib] == ch, f"{name}/{size}/{kind} at ({x},{y})"
 
 
-def test_header_declares_both_sprites():
+@pytest.mark.parametrize("name", ALL_THEMES)
+def test_header_declares_every_theme_and_size(name):
     h = ex.render_header()
-    assert "SPRITE_BUS_DATA" in h
-    assert "SPRITE_TRAIN_DATA" in h
+    assert f"THEME_{name.upper()}" in h
+    for size in ("LARGE", "COMPACT"):
+        for kind in ("BUS", "TRAIN"):
+            assert f"SPRITE_{name.upper()}_{size}_{kind}_DATA" in h
 
 
-def test_header_declares_dimensions_matching_python():
+@pytest.mark.parametrize("name", ALL_THEMES)
+def test_header_dimensions_match_python(name):
     h = ex.render_header()
-    assert f"SPRITE_BUS_W {_sprite('bus').width}" in h
-    assert f"SPRITE_TRAIN_W {_sprite('train').width}" in h
-    assert f"SPRITE_H {_sprite('bus').height}" in h
+    for (size, kind), s in themes.get(name).sprites.items():
+        tag = f"{name.upper()}_{size.upper()}_{kind.upper()}"
+        assert f"#define SPRITE_{tag}_W {s.width}" in h
+        assert f"#define SPRITE_{tag}_H {s.height}" in h
+
+
+def test_all_eleven_roles_are_exported():
+    h = ex.render_header()
+    for const in ex.ROLE_CONST.values():
+        assert const in h
 
 
 def test_header_has_an_include_guard():
@@ -60,8 +69,3 @@ def test_header_has_an_include_guard():
 
 def test_header_warns_against_hand_editing():
     assert "generated" in ex.render_header().lower()
-
-
-def test_role_indices_are_exported_for_the_firmware_palette():
-    h = ex.render_header()
-    assert "ROLE_BODY" in h and "ROLE_WINDOW" in h

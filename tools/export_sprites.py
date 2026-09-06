@@ -60,20 +60,25 @@ def render_header():
     ]
     for letter, const in ROLE_CONST.items():
         parts.append(f"#define {const} {ROLE_INDEX[letter]}")
-    parts.append("")
 
-    th = themes.get(themes.DEFAULT)
-    parts.append(f"#define SPRITE_H {th.sprite('compact', 'bus').height}")
+    names = themes.names()
+    parts += ["", f"#define THEME_COUNT {len(names)}"]
+    for i, n in enumerate(names):
+        parts.append(f"#define THEME_{n.upper()} {i}")
 
-    for name in ("bus", "train"):
-        s = th.sprite("compact", name)
-        up = name.upper()
-        parts += [
-            "",
-            f"#define SPRITE_{up}_W {s.width}",
-            f"#define SPRITE_{up}_STRIDE {(s.width + 1) // 2}",
-            _array(f"SPRITE_{up}_DATA", pack(s)),
-        ]
+    for n in names:
+        th = themes.get(n)
+        for size in ("large", "compact"):
+            for kind in ("bus", "train"):
+                s = th.sprite(size, kind)
+                tag = f"{n.upper()}_{size.upper()}_{kind.upper()}"
+                parts += [
+                    "",
+                    f"#define SPRITE_{tag}_W {s.width}",
+                    f"#define SPRITE_{tag}_H {s.height}",
+                    f"#define SPRITE_{tag}_STRIDE {(s.width + 1) // 2}",
+                    _array(f"SPRITE_{tag}_DATA", pack(s)),
+                ]
     return "\n".join(parts) + "\n"
 
 

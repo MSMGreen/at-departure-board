@@ -20,6 +20,14 @@ python tools/simulate.py --all --gif --show
 Renders every board state to `tools/out/`, including the two that are easiest to
 get wrong: 1am with nothing left tonight, and a cancelled service.
 
+Two themes ship: `transit` and `ghibli`. Sprites come in two sizes — large art
+at 1–2 watches, compact at 3–4, because a 40px vehicle does not fit a 55px lane.
+
+```bash
+python tools/simulate.py --scene two_up --theme ghibli
+python tools/author_art.py               # regenerate the vehicle art
+```
+
 ## Development
 
 ```bash
@@ -37,6 +45,8 @@ goldens in the same commit as the change.
 | Concern | File |
 |---|---|
 | Colour roles, AT `route_color` handling | `tools/board/palette.py` |
+| Themes (palette, sprites, scenery) | `tools/board/themes/` |
+| Vehicle art (parametric source) | `tools/author_art.py` |
 | Pixel-art vehicles | `tools/board/sprites.py` |
 | What the screen is showing | `tools/board/model.py` |
 | Lane geometry, ETA → x position | `tools/board/layout.py` |
@@ -46,8 +56,12 @@ goldens in the same commit as the change.
 
 Sprites are authored as role grids — `B` for body, `W` for window — rather than
 literal colours, which is what lets one bus sprite render in whatever colour its
-route is. `src/sprites.h` is generated from the same data and committed, so the
-firmware build never needs Python.
+route is, and what lets a theme reinterpret every role at once. `src/sprites.h`
+is generated from the same data and committed, so the firmware build never needs
+Python.
+
+Art is never typed by hand. Edit `tools/author_art.py`, which draws it
+parametrically, then regenerate.
 
 ## Hardware
 
