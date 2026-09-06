@@ -710,6 +710,15 @@ is meant to change what is drawn."
 
 The change that stops a 111px lane looking abandoned.
 
+**Scenery must be reproducible in C.** The firmware animates the 1px `bob` by
+repainting the sprite's bounding box, and that box overlaps the skyline and the
+hills, so the erase has to redraw scenery — which means the ESP32 has to place
+the same stars and buildings the Python renderer did. `random.Random` is a
+Mersenne Twister and nothing in C will match it. So scenery uses an explicit
+32-bit LCG, four lines in either language, and a test pins its output. Doing
+this now costs five lines; retrofitting it later means regenerating every
+golden.
+
 **Files:**
 - Create: `tools/board/scenery.py`
 - Modify: `tools/board/render.py`, `tools/board/themes/transit.py`
@@ -739,6 +748,22 @@ def test_scenery_changes_a_two_lane_render():
 def test_scenery_is_deterministic():
     b = scenes.SCENES["two_up"]
     assert render.render(b, t=0.0).tobytes() == render.render(b, t=0.0).tobytes()
+
+
+def test_the_scenery_rng_is_portable_to_c():
+    # Pinned so the firmware can be checked against these exact numbers.
+    # If this test changes, src/ and the goldens both have to change with it.
+    from tools.board import scenery
+    r = scenery.Rng(7)
+    assert [r.below(20) for _ in range(8)] == [18, 12, 18, 0, 17, 7, 1, 1]
+    assert scenery.Rng(7).next() == 3923423697
+
+
+def test_different_lanes_get_different_scenery():
+    from tools.board import scenery
+    a = [scenery.Rng(7).below(20) for _ in range(8)]
+    b = [scenery.Rng(8).below(20) for _ in range(8)]
+    assert a != b
 ```
 
 - [ ] **Step 2: Write the scenery module**
@@ -751,29 +776,78 @@ Create `tools/board/scenery.py`:
 A vehicle alone in a 111px lane looks abandoned. Fifteen lines of scenery is
 the difference between a sprite on a rectangle and a board you want on a wall.
 
-Every function takes a seeded Random so a lane's stars and buildings stay put
+Every function takes a seeded Rng so a lane's stars and buildings stay put
 between frames - scenery must never shimmer.
+
+The Rng is deliberately not `random.Random`. The firmware repaints the sprite's
+bounding box to animate the bob, that box overlaps this scenery, so the ESP32
+has to place the same stars the renderer did. A Mersenne Twister cannot be
+reproduced in four lines of C; a 32-bit LCG can. `tests/test_render.py` pins
+its output.
 """
 
 import math
-import random
+
+MASK = 0xFFFFFFFF
+
+
+class Rng:
+    """Numerical Recipes' 32-bit LCG. Portable to C as a bare uint32_t."""
+
+    def __init__(self, seed):
+        self.state = (seed * 1664525 + 1013904223) & MASK
+
+    def next(self):
+        self.state = (self.state * 1664525 + 1013904223) & MASK
+        return self.state
+
+    def below(self, n):
+        """0 <= result < n, for n up to 65535.
+
+        Takes the high 16 bits: the low bits of an LCG are famously weak, and
+        `next() % n` would draw the stars in visible diagonal stripes.
+        """
+        return ((self.next() >> 16) * n) >> 16
+
+    def between(self, lo, hi):
+        """Inclusive of both ends, matching random.randint."""
+        return lo + self.below(hi - lo + 1)
+
+    def chance(self, percent):
+        return self.below(100) < percent
+
+    def pick(self, seq):
+        return seq[self.below(len(seq))]
+
+
+def _hill(dx):
+    """Height of the Ghibli hill at dx pixels from the lane's left edge.
+
+    Kept as a pure function of dx so the firmware can precompute it into a
+    byte table once per lane instead of calling sin() per column.
+    """
+    return int(7 + 5 * math.sin(dx / 26.0) + 3 * math.sin(dx / 9.0))
+
+
+def _shore(dx):
+    return int(4 + 3 * math.sin(dx / 18.0))
 
 
 def transit(d, rect, kind, seed, th):
     """Low city skyline for the road; overhead wires for the rail."""
     x0, y0, x1, y1 = rect
-    rnd = random.Random(seed)
+    rnd = Rng(seed)
     base = y1 - 14
     if kind == "bus":
         x = x0 + 6
         while x < x1 - 6:
-            bw, bh = rnd.randint(9, 20), rnd.randint(6, 18)
+            bw, bh = rnd.between(9, 20), rnd.between(6, 18)
             d.rectangle((x, base - bh, x + bw, base), fill=(26, 34, 48))
             for wy in range(base - bh + 3, base - 2, 5):
                 for wx in range(x + 2, x + bw - 2, 5):
-                    if rnd.random() < 0.35:
+                    if rnd.chance(35):
                         d.point((wx, wy), fill=(58, 74, 96))
-            x += bw + rnd.randint(2, 6)
+            x += bw + rnd.between(2, 6)
     else:
         d.line((x0 + 6, y0 + 30, x1 - 6, y0 + 30), fill=(34, 42, 56))
         for mx in range(x0 + 20, x1 - 10, 46):
@@ -783,19 +857,17 @@ def transit(d, rect, kind, seed, th):
 def ghibli(d, rect, kind, seed, th):
     """Stars over a hill for the road; stars over water for the rail."""
     x0, y0, x1, y1 = rect
-    rnd = random.Random(seed)
+    rnd = Rng(seed)
     for _ in range(26):
-        d.point((rnd.randint(x0 + 6, x1 - 6), rnd.randint(y0 + 26, y1 - 34)),
-                fill=rnd.choice([(90, 84, 130), (130, 120, 170), (180, 170, 210)]))
+        d.point((rnd.between(x0 + 6, x1 - 6), rnd.between(y0 + 26, y1 - 34)),
+                fill=rnd.pick([(90, 84, 130), (130, 120, 170), (180, 170, 210)]))
     base = y1 - 14
     if kind == "bus":
         for x in range(x0 + 6, x1 - 6):
-            h = int(7 + 5 * math.sin((x - x0) / 26.0) + 3 * math.sin((x - x0) / 9.0))
-            d.line((x, base - h, x, base), fill=(30, 26, 54))
+            d.line((x, base - _hill(x - x0), x, base), fill=(30, 26, 54))
     else:
         for x in range(x0 + 6, x1 - 6):
-            h = int(4 + 3 * math.sin((x - x0) / 18.0))
-            d.line((x, base - h, x, base), fill=(26, 28, 60))
+            d.line((x, base - _shore(x - x0), x, base), fill=(26, 28, 60))
         for k in range(6):                     # moon path on the water
             d.line((x0 + 40 + k * 30, base - 2, x0 + 52 + k * 30, base - 2),
                    fill=(48, 52, 96))
@@ -847,7 +919,10 @@ Fifteen lines per theme, drawn behind everything, only at 1-2 lanes where
 there is room. This is the single biggest visual improvement in the theme
 work: a vehicle alone in a 111px lane looks abandoned.
 
-Seeded per lane so stars and buildings never shimmer between frames."
+Seeded per lane so stars and buildings never shimmer between frames, and
+seeded with a 32-bit LCG rather than random.Random so the firmware can place
+the same stars: animating the bob means repainting a box that overlaps this
+scenery, and a Mersenne Twister does not port to C."
 ```
 
 ---
