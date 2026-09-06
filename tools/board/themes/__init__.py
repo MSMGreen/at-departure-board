@@ -1,11 +1,11 @@
 """Theme registry. Adding a theme means adding a module and one import."""
 
 from .base import Theme  # noqa: F401
-from . import transit
+from . import ghibli, transit
 
 DEFAULT = "transit"
 
-_ALL = [transit.THEME]
+_ALL = [transit.THEME, ghibli.THEME]
 THEMES = {t.name: t for t in _ALL}
 
 
