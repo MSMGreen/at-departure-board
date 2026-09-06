@@ -25,3 +25,14 @@ def test_animation_frames_are_not_all_identical():
 def test_unknown_scene_name_is_rejected_clearly():
     with pytest.raises(KeyError):
         simulate.contact_sheet(["nope"], scale=1)
+
+
+def test_contact_sheet_accepts_a_theme():
+    a = simulate.contact_sheet(["two_up"], scale=1)
+    b = simulate.contact_sheet(["two_up"], scale=1, theme="ghibli")
+    assert a.tobytes() != b.tobytes()
+
+
+def test_unknown_theme_is_rejected():
+    with pytest.raises(KeyError):
+        simulate.contact_sheet(["two_up"], scale=1, theme="nope")

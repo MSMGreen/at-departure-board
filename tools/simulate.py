@@ -3,6 +3,7 @@
 
     python tools/simulate.py --all --scale 2 --show
     python tools/simulate.py --scene arriving --gif
+    python tools/simulate.py --scene two_up --theme ghibli
 """
 
 import argparse
@@ -13,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools.board import render, scenes  # noqa: E402
+from tools.board import render, scenes, themes  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
 
@@ -27,9 +28,11 @@ def _label_font(size=15):
         return ImageFont.load_default()
 
 
-def contact_sheet(names, scale=2):
+def contact_sheet(names, scale=2, theme=None):
     """Every named scene side by side, NEAREST-upscaled to show real pixels."""
-    imgs = [(n, render.render(scenes.SCENES[n])) for n in names]  # KeyError if unknown
+    th = themes.get(theme) if theme else None
+    imgs = [(n, render.render(scenes.SCENES[n], theme=th))
+            for n in names]  # KeyError if unknown
     pad, lab = 12, 22
     cw, ch = 320 * scale, 240 * scale
     sheet = Image.new("RGB", (pad + len(imgs) * (cw + pad), pad + lab + ch + pad),
@@ -42,8 +45,9 @@ def contact_sheet(names, scale=2):
     return sheet
 
 
-def animate(board, frames=48, fps=12):
-    return [render.render(board, t=i / fps) for i in range(frames)]
+def animate(board, frames=48, fps=12, theme=None):
+    th = themes.get(theme) if theme else None
+    return [render.render(board, t=i / fps, theme=th) for i in range(frames)]
 
 
 def main():
@@ -53,25 +57,33 @@ def main():
     ap.add_argument("--gif", action="store_true")
     ap.add_argument("--scale", type=int, default=2)
     ap.add_argument("--show", action="store_true")
+    ap.add_argument("--theme", default=None)
     args = ap.parse_args()
 
     if args.scene and args.scene not in scenes.SCENES:
         raise SystemExit(
             f"unknown scene {args.scene!r}. known: {', '.join(sorted(scenes.SCENES))}")
 
+    if args.theme and args.theme not in themes.names():
+        raise SystemExit(
+            f"unknown theme {args.theme!r}. known: {', '.join(themes.names())}")
+
+    # Suffixed so themes do not overwrite each other's output.
+    suffix = f"_{args.theme}" if args.theme else ""
+
     os.makedirs(OUT, exist_ok=True)
     names = sorted(scenes.SCENES) if (args.all or not args.scene) else [args.scene]
 
-    sheet = contact_sheet(names, args.scale)
-    sheet_path = os.path.join(OUT, "scenes.png")
+    sheet = contact_sheet(names, args.scale, args.theme)
+    sheet_path = os.path.join(OUT, f"scenes{suffix}.png")
     sheet.save(sheet_path)
     print("wrote", sheet_path)
 
     if args.gif:
         for n in names:
             frames = [f.resize((640, 480), Image.NEAREST)
-                      for f in animate(scenes.SCENES[n])]
-            p = os.path.join(OUT, f"{n}.gif")
+                      for f in animate(scenes.SCENES[n], theme=args.theme)]
+            p = os.path.join(OUT, f"{n}{suffix}.gif")
             frames[0].save(p, save_all=True, append_images=frames[1:],
                            duration=80, loop=0, optimize=True)
             print("wrote", p)

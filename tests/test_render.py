@@ -3,7 +3,7 @@ import os
 import pytest
 from PIL import Image
 
-from tools.board import render, scenes
+from tools.board import render, scenes, themes
 from tools.board.model import Board, Departure, Watch
 
 ALL = sorted(scenes.SCENES)
@@ -109,3 +109,25 @@ def test_different_lanes_get_different_scenery():
     a = [scenery.Rng(7).below(20) for _ in range(8)]
     b = [scenery.Rng(8).below(20) for _ in range(8)]
     assert a != b
+
+THEMED = [(th, sc) for th in themes.names() if th != themes.DEFAULT
+          for sc in ("two_up", "empty")]
+
+
+@pytest.mark.parametrize("theme,scene", THEMED)
+def test_themed_render_matches_golden(theme, scene):
+    path = os.path.join(GOLDEN, f"{theme}__{scene}.png")
+    assert os.path.exists(path), (
+        f"no golden for {theme}/{scene}. Run `python tools/regolden.py`.")
+    expected = Image.open(path).convert("RGB")
+    actual = render.render(scenes.SCENES[scene], t=0.0, theme=themes.get(theme))
+    assert actual.tobytes() == expected.tobytes(), (
+        f"render of {theme}/{scene} changed. If intended, regenerate goldens.")
+
+
+@pytest.mark.parametrize("theme", themes.names())
+@pytest.mark.parametrize("n", [1, 2, 3, 4])
+def test_every_theme_renders_at_every_lane_count(theme, n):
+    b = Board([Watch("20", "to town", "bus" if i % 2 == 0 else "train",
+                     [Departure(240 * (i + 1))]) for i in range(n)], "17:42")
+    assert render.render(b, theme=themes.get(theme)).size == (320, 240)
