@@ -73,3 +73,39 @@ def test_matches_golden(name):
         f"`python tools/regolden.py` and commit the new goldens."
     )
 
+
+def test_scenery_only_draws_in_large_lanes():
+    # At 3-4 lanes there is no room and it would fight the text.
+    from tools.board import layout
+    assert layout.size_class(4) == "compact"
+    b4 = Board([Watch("20", "x", "bus", [Departure(240)])] * 4, "17:42")
+    assert render.render(b4).size == (320, 240)
+
+
+def test_scenery_changes_a_two_lane_render():
+    from tools.board import themes
+    th = themes.get("transit")
+    plain = themes.Theme(**{**th.__dict__, "scenery": None})
+    b = scenes.SCENES["two_up"]
+    assert render.render(b, theme=th).tobytes() != render.render(b, theme=plain).tobytes()
+
+
+def test_scenery_is_deterministic():
+    b = scenes.SCENES["two_up"]
+    assert render.render(b, t=0.0).tobytes() == render.render(b, t=0.0).tobytes()
+
+
+def test_the_scenery_rng_is_portable_to_c():
+    # Pinned so the firmware can be checked against these exact numbers.
+    # If this test changes, src/ and the goldens both have to change with it.
+    from tools.board import scenery
+    r = scenery.Rng(7)
+    assert [r.below(20) for _ in range(8)] == [18, 12, 18, 0, 17, 7, 1, 1]
+    assert scenery.Rng(7).next() == 3923423697
+
+
+def test_different_lanes_get_different_scenery():
+    from tools.board import scenery
+    a = [scenery.Rng(7).below(20) for _ in range(8)]
+    b = [scenery.Rng(8).below(20) for _ in range(8)]
+    assert a != b

@@ -69,6 +69,10 @@ def _lane(d, ln, watch, t, index, th, size):
          ln.rect.x1 - layout.MARGIN, ln.rect.y1 - 3),
         radius=5, fill=card)
 
+    if size == "large" and th.scenery is not None:
+        th.scenery(d, (ln.rect.x0 + 8, ln.rect.y0, ln.rect.x1 - 8, ln.rect.y1),
+                   watch.kind, 7 + index, th, card)
+
     nxt = watch.next
     colour = th.badge_colour(watch.kind, watch.route_color)
     sprite = th.sprite(size, watch.kind)

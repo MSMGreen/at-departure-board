@@ -1,6 +1,7 @@
 """The default look: a transit board. The only theme that honours AT's own
 route colours, because it is the only one pretending to be signage."""
 
+from .. import scenery
 from ..art import load
 from .base import Theme
 
@@ -30,4 +31,5 @@ THEME = Theme(
            "D": (10, 20, 30), "K": (16, 26, 36),
            "L": (250, 200, 70), "A": (0, 140, 190)},
     use_route_color=True,
+    scenery=scenery.transit,
 )

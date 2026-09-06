@@ -16,7 +16,7 @@ class Theme:
     kind_fallback: Dict[str, tuple]
     roles: Dict[str, object]              # tuple, or "shade"/"bright"/"body"
     use_route_color: bool = False
-    scenery: Optional[Callable] = None    # (draw, rect, kind, seed) -> None
+    scenery: Optional[Callable] = None    # (draw, rect, kind, seed, theme, card)
 
     def colour(self, key) -> Tuple[int, int, int]:
         try:
