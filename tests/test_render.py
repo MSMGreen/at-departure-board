@@ -1,4 +1,7 @@
+import os
+
 import pytest
+from PIL import Image
 
 from tools.board import render, scenes
 from tools.board.model import Board, Departure, Watch
@@ -51,3 +54,21 @@ def test_an_empty_watch_renders_without_raising():
 def test_a_departed_vehicle_does_not_escape_the_lane():
     b = Board([Watch("20", "to Wynyard Quarter", "bus", [Departure(-90)])], "17:42")
     assert render.render(b).size == (320, 240)
+
+
+GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden")
+
+
+@pytest.mark.parametrize("name", ALL)
+def test_matches_golden(name):
+    path = os.path.join(GOLDEN, name + ".png")
+    assert os.path.exists(path), (
+        f"no golden for '{name}'. If this scene is new, run "
+        f"`python tools/regolden.py` and commit the result."
+    )
+    expected = Image.open(path).convert("RGB")
+    actual = render.render(scenes.SCENES[name], t=0.0)
+    assert actual.tobytes() == expected.tobytes(), (
+        f"render of '{name}' changed. If that was intended, run "
+        f"`python tools/regolden.py` and commit the new goldens."
+    )

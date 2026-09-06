@@ -97,11 +97,16 @@ def _lane(d, ln, watch, t, index):
             box = d.textbbox(ln.minutes_xy, str(_mins(nxt.eta_s)),
                              font=mono(20), anchor="ra")
             y = (box[1] + box[3]) // 2
-            d.line((box[0] - 2, y, box[2] + 2, y), fill=palette.BASE["warn"], width=2)
-        following = watch.following
-        d.text(ln.following_xy,
-               f"then {_mins(following.eta_s)}" if following else "then --",
-               font=reg(9), fill=palette.BASE["dim"], anchor="ra")
+            d.line((box[0] - 1, y, box[2] + 1, y), fill=palette.BASE["warn"], width=2)
+            # A 2px strike is invisible from across the room, which is the
+            # distance this board is read from. The word is what carries it.
+            d.text(ln.following_xy, "cancelled", font=reg(9),
+                   fill=palette.BASE["warn"], anchor="ra")
+        else:
+            following = watch.following
+            d.text(ln.following_xy,
+                   f"then {_mins(following.eta_s)}" if following else "then --",
+                   font=reg(9), fill=palette.BASE["dim"], anchor="ra")
 
     # track + stop marker
     track_colour = palette.BASE["road"] if watch.kind == "bus" else palette.BASE["rail"]
