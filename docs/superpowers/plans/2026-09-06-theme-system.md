@@ -73,15 +73,32 @@ Modified: `palette.py`, `sprites.py`, `layout.py`, `render.py`, `model.py`,
 
 ### Task 1: Theme type and registry, compact art only
 
-A pure refactor. Deliberately does **not** introduce large art, so the eight
-existing goldens must pass unregenerated — that is the proof the refactor
-changed nothing.
+A pure refactor of *structure*. It does not introduce large art.
+
+**Correction, applied during execution.** This task originally claimed the
+eight goldens must pass unregenerated, as proof the refactor changed nothing.
+That was impossible: the goldens were frozen at `859a810` and the art was
+redesigned at `56039af`, so this is the commit where `render.py` starts
+consuming the new art — 36x16 compact in place of the hand-typed 34x14. The
+goldens legitimately change here.
+
+The proof is replaced by a sharper one: `test_the_theme_refactor_only_moved_
+pixels_in_the_sprite_band` compares against the pre-refactor goldens in git
+and asserts every changed pixel lies in a lane's sprite band. It passes with
+zero stray pixels across all eight scenes. **Task 3 deletes it.**
+
+Task 1 also bridges `export_sprites.py` to the theme registry, pulling Task 7's
+11-role table forward, because deleting `sprites.SPRITES` breaks the exporter
+and six red tests across five tasks is worse.
 
 **Files:**
 - Create: `tools/board/themes/__init__.py`, `base.py`, `transit.py`
 - Modify: `tools/board/palette.py`, `sprites.py`, `render.py`, `model.py`
 - Modify: `tests/test_palette.py`, `tests/test_model.py`
 - Delete: `tests/test_sprites.py`
+- Also modified (not originally listed): `tools/board/layout.py`,
+  `tools/export_sprites.py`, `tests/test_layout.py`, `tests/test_export.py`,
+  `tests/golden/*.png`, `src/sprites.h`
 
 **Interfaces:**
 - Produces:
@@ -96,7 +113,7 @@ changed nothing.
   - `render.render(board, t=0.0, theme=None)`
   - `model.Board.theme: str = "transit"`
 
-- [ ] **Step 1: Extend the role vocabulary**
+- [x] **Step 1: Extend the role vocabulary**
 
 In `tools/board/palette.py`, replace `ROLES` and add `bright`:
 
@@ -124,7 +141,7 @@ def bright(rgb, factor=1.6, floor=40):
 Delete `BASE`, `KIND_FALLBACK`, `kind_colour`, `resolve_badge_colour` — they
 become per-theme.
 
-- [ ] **Step 2: Write the failing theme test**
+- [x] **Step 2: Write the failing theme test**
 
 Create `tests/test_themes.py`:
 
@@ -172,12 +189,12 @@ def test_sprites_are_keyed_by_size_and_kind():
     assert t.sprite("compact", "train").width == 48
 ```
 
-- [ ] **Step 3: Run it and confirm it fails**
+- [x] **Step 3: Run it and confirm it fails**
 
 Run: `python -m pytest tests/test_themes.py -v`
 Expected: FAIL, `ModuleNotFoundError: No module named 'tools.board.themes'`
 
-- [ ] **Step 4: Write the Theme type**
+- [x] **Step 4: Write the Theme type**
 
 Create `tools/board/themes/base.py`:
 
@@ -236,7 +253,7 @@ class Theme:
                 f"theme {self.name!r} has no {size}/{kind} sprite") from None
 ```
 
-- [ ] **Step 5: Write the art loader**
+- [x] **Step 5: Write the art loader**
 
 Create `tools/board/art/__init__.py` (replacing the empty file):
 
@@ -265,7 +282,7 @@ def themes_with_art():
     return sorted({t for (t, _, _) in _RAW})
 ```
 
-- [ ] **Step 6: Write the transit theme**
+- [x] **Step 6: Write the transit theme**
 
 Create `tools/board/themes/transit.py`:
 
@@ -305,7 +322,7 @@ THEME = Theme(
 )
 ```
 
-- [ ] **Step 7: Write the registry**
+- [x] **Step 7: Write the registry**
 
 Create `tools/board/themes/__init__.py`:
 
@@ -338,7 +355,7 @@ def all_themes():
     return [THEMES[n] for n in sorted(THEMES)]
 ```
 
-- [ ] **Step 8: Change `sprites.blit`**
+- [x] **Step 8: Change `sprites.blit`**
 
 In `tools/board/sprites.py` delete `BUS`, `TRAIN`, `SPRITES` and
 `role_colours`. Keep `Sprite`, and change `blit`:
@@ -364,7 +381,7 @@ def blit(draw, sprite, x, y, colours):
                 run_start, run_role = rx, role
 ```
 
-- [ ] **Step 9: Thread the theme through `model` and `render`**
+- [x] **Step 9: Thread the theme through `model` and `render`**
 
 Add `theme: str = "transit"` to `Board`. Delete `Watch.colour`.
 
@@ -418,7 +435,7 @@ def test_bright_moves_away_from_black():
 
 Delete `tests/test_sprites.py` — Task 2 replaces it with the cross-theme suite.
 
-- [ ] **Step 10: Run everything. The goldens must pass unregenerated**
+- [x] **Step 10: Run everything. The goldens must pass unregenerated**
 
 Run: `python -m pytest -v`
 Expected: PASS, including all 8 existing goldens **without** running
@@ -428,7 +445,7 @@ do not regenerate. This is the only regression check this task has.
 Note `layout.vehicle_x` already takes a width from the display-layer work, so
 no change is needed there.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add tools/board/themes tools/board/art tools/board/palette.py \
@@ -670,10 +687,17 @@ and `_lane(d, ln, watch, t, index, th, size)` uses
 Run: `python -m pytest tests/test_layout.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Regenerate goldens — they legitimately change now**
+- [ ] **Step 5: Delete Task 1's transitional band test**
 
-Unlike Task 1, this task *is* meant to change rendering: every 1–2 lane scene
-now draws large art.
+Remove `test_the_theme_refactor_only_moved_pixels_in_the_sprite_band` from
+`tests/test_render.py`, along with its `PRE_REFACTOR` / `BAND_ABOVE` /
+`BAND_BELOW` constants and the `_blob` helper. Large art moves the sprite band
+by design, which is exactly what that test forbids; it has done its job.
+
+- [ ] **Step 6: Regenerate goldens — they legitimately change now**
+
+This task *is* meant to change rendering: every 1–2 lane scene now draws
+large art.
 
 Run: `python tools/regolden.py`
 
@@ -685,12 +709,12 @@ Then open `tests/golden/two_up.png`, `single.png`, `arriving.png`,
 - `four_up.png` is unchanged — it uses compact art
 - nothing is clipped at the lane edges
 
-- [ ] **Step 6: Run everything**
+- [ ] **Step 7: Run everything**
 
 Run: `python -m pytest -v`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add tools/board/layout.py tools/board/render.py tests/test_layout.py \
@@ -1151,8 +1175,15 @@ git commit -m "Add --theme to the simulator and freeze themed goldens"
 
 - [ ] **Step 1: Update the exporter**
 
-In `tools/export_sprites.py`, extend `ROLE_INDEX` and `ROLE_CONST` to all 11
-roles, and rewrite `render_header()`:
+`ROLE_INDEX`, `ROLE_CONST` and the import of `themes` already landed in Task 1
+(the exporter would not run otherwise). What remains here is `render_header()`:
+looping over every theme and both size classes, and replacing the single
+`SPRITE_H` with per-sprite dimensions.
+
+Note the flash figure below is understated: the eight sprites total 15,692
+pixels, so **7.8 KB** at 4bpp, not 5 KB. Still irrelevant against 4 MB.
+
+In `tools/export_sprites.py`, rewrite `render_header()`:
 
 ```python
 ROLE_INDEX = {".": 0, "B": 1, "H": 2, "S": 3, "M": 4, "W": 5,
