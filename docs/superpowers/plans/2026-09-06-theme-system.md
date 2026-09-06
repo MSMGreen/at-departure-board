@@ -468,7 +468,7 @@ because 4bpp allows 16 and flat fills were why the old sprites looked flat."
 **Files:**
 - Modify: `tests/test_themes.py`
 
-- [ ] **Step 1: Add the suite**
+- [x] **Step 1: Add the suite**
 
 Append to `tests/test_themes.py`:
 
@@ -594,13 +594,13 @@ def test_alternating_lanes_are_distinguishable(name):
     assert contrast(t.colour("panel"), t.colour("panel_hi")) >= 1.05
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `python -m pytest tests/test_themes.py -v`
 Expected: PASS. `test_large_art_actually_uses_its_budget` passes because
 transit's large art (38px) already exists in the generated data.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/test_themes.py
@@ -625,7 +625,7 @@ compact art in a bigger box."
 **Interfaces:**
 - Produces: `layout.size_class(n) -> str`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_layout.py`:
 
@@ -647,12 +647,12 @@ def test_compact_art_fits_a_four_lane_board():
     assert ln.sprite_baseline - 18 > ln.badge.y1
 ```
 
-- [ ] **Step 2: Run and confirm it fails**
+- [x] **Step 2: Run and confirm it fails**
 
 Run: `python -m pytest tests/test_layout.py -k size_class -v`
 Expected: FAIL, `AttributeError: module 'tools.board.layout' has no attribute 'size_class'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `tools/board/layout.py`:
 
@@ -682,19 +682,19 @@ In `tools/board/render.py`, `render()` computes it once and passes it down:
 and `_lane(d, ln, watch, t, index, th, size)` uses
 `sprite = th.sprite(size, watch.kind)`.
 
-- [ ] **Step 4: Run the layout tests**
+- [x] **Step 4: Run the layout tests**
 
 Run: `python -m pytest tests/test_layout.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Delete Task 1's transitional band test**
+- [x] **Step 5: Delete Task 1's transitional band test**
 
 Remove `test_the_theme_refactor_only_moved_pixels_in_the_sprite_band` from
 `tests/test_render.py`, along with its `PRE_REFACTOR` / `BAND_ABOVE` /
 `BAND_BELOW` constants and the `_blob` helper. Large art moves the sprite band
 by design, which is exactly what that test forbids; it has done its job.
 
-- [ ] **Step 6: Regenerate goldens — they legitimately change now**
+- [x] **Step 6: Regenerate goldens — they legitimately change now**
 
 This task *is* meant to change rendering: every 1–2 lane scene now draws
 large art.
@@ -709,12 +709,12 @@ Then open `tests/golden/two_up.png`, `single.png`, `arriving.png`,
 - `four_up.png` is unchanged — it uses compact art
 - nothing is clipped at the lane edges
 
-- [ ] **Step 7: Run everything**
+- [x] **Step 7: Run everything**
 
 Run: `python -m pytest -v`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add tools/board/layout.py tools/board/render.py tests/test_layout.py \
@@ -748,7 +748,7 @@ golden.
 - Modify: `tools/board/render.py`, `tools/board/themes/transit.py`
 - Modify: `tests/test_render.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_render.py`:
 
@@ -790,7 +790,7 @@ def test_different_lanes_get_different_scenery():
     assert a != b
 ```
 
-- [ ] **Step 2: Write the scenery module**
+- [x] **Step 2: Write the scenery module**
 
 Create `tools/board/scenery.py`:
 
@@ -897,7 +897,7 @@ def ghibli(d, rect, kind, seed, th):
                    fill=(48, 52, 96))
 ```
 
-- [ ] **Step 3: Wire it in**
+- [x] **Step 3: Wire it in**
 
 In `tools/board/themes/transit.py`, add to the import and the `Theme(...)`:
 
@@ -918,7 +918,7 @@ rounded-rectangle is drawn and **before** the badge:
 
 Order matters: scenery is a background, so everything else draws over it.
 
-- [ ] **Step 4: Run and look**
+- [x] **Step 4: Run and look**
 
 Run: `python -m pytest tests/test_render.py -v`
 Then regenerate and inspect:
@@ -931,7 +931,7 @@ Open `tests/golden/two_up.png`. The skyline must sit behind the bus and
 below the headsign text, and the "then 17" must stay readable over it. If the
 skyline collides with text, lower `base` or reduce building heights.
 
-- [ ] **Step 5: Run everything and commit**
+- [x] **Step 5: Run everything and commit**
 
 ```bash
 python -m pytest
@@ -962,7 +962,7 @@ lantern-lit night train carrying one tall quiet passenger in the second
 carriage. Original designs, deliberately not reproductions of Studio Ghibli's
 characters, because this repo is meant to be forked.
 
-- [ ] **Step 1: Write the theme**
+- [x] **Step 1: Write the theme**
 
 The art already exists in the generated data. Create
 `tools/board/themes/ghibli.py`:
@@ -1008,7 +1008,7 @@ THEME = Theme(
 )
 ```
 
-- [ ] **Step 2: Register it**
+- [x] **Step 2: Register it**
 
 ```python
 from . import ghibli, transit
@@ -1016,7 +1016,7 @@ from . import ghibli, transit
 _ALL = [transit.THEME, ghibli.THEME]
 ```
 
-- [ ] **Step 3: Run the suite — it covers ghibli automatically now**
+- [x] **Step 3: Run the suite — it covers ghibli automatically now**
 
 Run: `python -m pytest tests/test_themes.py -v`
 Expected: PASS, roughly double the count.
@@ -1025,7 +1025,7 @@ The likely failure is `test_badge_ink_is_legible_on_every_badge_colour` for
 the train's periwinkle. If it fails, lighten `kind_fallback["train"]`. Never
 lower the threshold.
 
-- [ ] **Step 4: Look at it**
+- [x] **Step 4: Look at it**
 
 ```bash
 python -c "import sys;sys.path.insert(0,'.');from tools.board import render,scenes,themes;render.render(scenes.SCENES['two_up'],theme=themes.get('ghibli')).resize((960,720),0).save('tools/out/ghibli.png')"
@@ -1034,7 +1034,7 @@ python -c "import sys;sys.path.insert(0,'.');from tools.board import render,scen
 The cat-bus's eyes must read against its amber body, the passenger must be
 visible in the second carriage, and the stars must not sit on top of the text.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tools/board/themes/ghibli.py tools/board/themes/__init__.py
@@ -1048,7 +1048,7 @@ git commit -m "Add Ghibli Night theme"
 **Files:**
 - Modify: `tools/simulate.py`, `tools/regolden.py`, `tests/test_render.py`, `tests/test_simulate.py`
 
-- [ ] **Step 1: Add `--theme`**
+- [x] **Step 1: Add `--theme`**
 
 In `tools/simulate.py`, add `from tools.board import themes` and:
 
@@ -1079,7 +1079,7 @@ overwrite each other:
     p = os.path.join(OUT, f"{n}{suffix}.gif")
 ```
 
-- [ ] **Step 2: Extend regolden**
+- [x] **Step 2: Extend regolden**
 
 In `tools/regolden.py`, add `themes` to the imports and append to `main()`:
 
@@ -1098,7 +1098,7 @@ EXTRA_SCENES = ["two_up", "empty"]
             print("wrote", os.path.normpath(path))
 ```
 
-- [ ] **Step 3: Add the tests**
+- [x] **Step 3: Add the tests**
 
 Append to `tests/test_render.py`:
 
@@ -1146,7 +1146,7 @@ def test_unknown_theme_is_rejected():
         simulate.contact_sheet(["two_up"], scale=1, theme="nope")
 ```
 
-- [ ] **Step 4: Generate, inspect, run**
+- [x] **Step 4: Generate, inspect, run**
 
 ```bash
 python tools/regolden.py
@@ -1157,7 +1157,7 @@ python -m pytest -v
 Open `tools/out/scenes_ghibli.png` and check every scene — especially `empty`
 (1am, nothing left) and `cancelled`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tools/simulate.py tools/regolden.py tests/golden \
@@ -1173,7 +1173,7 @@ git commit -m "Add --theme to the simulator and freeze themed goldens"
 - Modify: `tools/export_sprites.py`, `tests/test_export.py`, `README.md`
 - Regenerate: `src/sprites.h`
 
-- [ ] **Step 1: Update the exporter**
+- [x] **Step 1: Update the exporter**
 
 `ROLE_INDEX`, `ROLE_CONST` and the import of `themes` already landed in Task 1
 (the exporter would not run otherwise). What remains here is `render_header()`:
@@ -1232,7 +1232,7 @@ def render_header():
 
 Add `from tools.board import themes` to its imports.
 
-- [ ] **Step 2: Update the export tests**
+- [x] **Step 2: Update the export tests**
 
 Replace the sprite-specific tests in `tests/test_export.py`:
 
@@ -1278,7 +1278,7 @@ def test_indices_fit_in_a_nibble():
 Keep `test_header_has_an_include_guard` and
 `test_header_warns_against_hand_editing`.
 
-- [ ] **Step 3: Generate and check the size**
+- [x] **Step 3: Generate and check the size**
 
 ```bash
 python tools/export_sprites.py
@@ -1289,7 +1289,7 @@ grep "THEME_COUNT" src/sprites.h    # expect 2
 Large art is bigger: 76x40 at 4bpp is 1520 bytes. All eight together are
 roughly 5 KB of flash — still irrelevant against 4 MB.
 
-- [ ] **Step 4: Update the README**
+- [x] **Step 4: Update the README**
 
 In `README.md`, add to the Layout table:
 
@@ -1310,7 +1310,7 @@ python tools/author_art.py --preview     # redraw the vehicles
 ```
 ````
 
-- [ ] **Step 5: Run everything and commit**
+- [x] **Step 5: Run everything and commit**
 
 ```bash
 python -m pytest
@@ -1340,12 +1340,26 @@ verified. That was the single largest error source in the previous draft.
 `scenery.<fn>(d, rect, kind, seed, th)` defined Task 4, referenced in Tasks 4,
 5. `render.render(board, t, theme)` consistent throughout.
 
-**Known risks.**
-1. Task 1 is the risky one — a refactor whose success criterion is that
-   nothing changes. Unregenerated goldens are the check.
-2. Task 3 and Task 4 both regenerate goldens **legitimately**. Do not confuse
-   this with Task 1, where a golden change means a bug.
-3. Ghibli's periwinkle train badge may fail the contrast check. Fix the
-   colour, not the threshold.
-4. Scenery could collide with the headsign or "then N" text at some lane
-   heights. Step 4 of Task 4 says to look; take that seriously.
+**Known risks, and how they landed.**
+1. ~~Task 1 is the risky one — a refactor whose success criterion is that
+   nothing changes. Unregenerated goldens are the check.~~ **Wrong.** The
+   goldens were frozen at `859a810` and the art was redesigned at `56039af`,
+   so Task 1 is where `render.py` starts consuming the new art and the goldens
+   must change. Replaced with a band-confinement test: zero pixels moved
+   outside the sprite bands in all eight scenes. Deleted in Task 3.
+2. Task 3 and Task 4 both regenerate goldens **legitimately**. Held — and so
+   does Task 1, for the reason above.
+3. ~~Ghibli's periwinkle train badge may fail the contrast check.~~ It passed
+   at 3.0+ without adjustment.
+4. Scenery could collide with the headsign or "then N" text. It does not — but
+   the real scenery bug was invisibility, not collision: hardcoded RGB against
+   alternating panel colours gave the rail lane's overhead wires a contrast
+   ratio of **1.001** on `panel_hi`. Scenery ink now derives from the lane's
+   card colour (1.33 / 1.38), which also stops Ghibli inheriting the bug.
+
+**Execution notes.**
+- Task 1 also had to change `layout.vehicle_x` (kind → width) and bridge
+  `tools/export_sprites.py`, neither of which the task listed.
+- `tools/author_art.py` has no `--preview` flag; the README says so correctly.
+- Final state: 163 tests passing, two themes, eight sprites, 7.8 KB of packed
+  art.
