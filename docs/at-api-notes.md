@@ -1,161 +1,202 @@
 # Auckland Transport API — verified notes
 
-Read off <https://dev-portal.at.govt.nz/> on 2026-09-06. Everything below is
-copied from the portal's own operation pages, not inferred.
+Endpoints read off <https://dev-portal.at.govt.nz/> and then **exercised against
+the live API** on 2026-09-06 (Sunday, ~17:40 NZST). Everything below is observed
+behaviour, not documentation. Where the docs and reality disagree, reality is
+recorded and the disagreement called out.
 
 Auth: header `Ocp-Apim-Subscription-Key: <key>` on every request.
-Free key: sign up at the dev portal, subscribe to both products below.
+Free key from the dev portal; subscribe to both products.
 
-Two separate APIs are involved:
+| API | Base |
+|---|---|
+| General Transit Feed V3 (`gtfs-api`) | `https://api.at.govt.nz/gtfs/v3` |
+| Realtime Compat (`gtfs-realtime-compat`) | `https://api.at.govt.nz/realtime/legacy` |
 
-| API | Base | Purpose |
-|---|---|---|
-| General Transit Feed V3 (`gtfs-api`) | `https://api.at.govt.nz/gtfs/v3` | Static schedule. JSON:API, `application/vnd.api+json` |
-| Realtime Compat (`gtfs-realtime-compat`) | `https://api.at.govt.nz/realtime/legacy` | Live delays. Updated at least every 30 s |
+Captured responses live in `test/fixtures/`.
 
-## The three calls this project needs
+## Resolved: stop code → stop_id
 
-### 1. Resolve a route by its short name — survives the 13 Sep 2026 rename
+`stop_id` is `{stop_code}-{hash}`. Two ways to get the hash, one works:
 
 ```
-GET /gtfs/v3/routes?filter[route_short_name]=20
-GET /gtfs/v3/routes?filter[route_type]=2          # 2 = Rail
+GET /gtfs/v3/stops/8213                  -> 404, "Resource Not Found"
+GET /gtfs/v3/stops?filter[stop_code]=8213 -> 200, 223 bytes    <-- use this
 ```
 
-Returns `route_id`, `route_short_name`, `route_long_name`, `route_color`,
-`route_text_color`. **`route_color` is worth using** — it gives us AT's real
-line colours for the badges instead of ones we invent.
+`filter[stop_code]` is **undocumented** — the portal lists only `filter[date]` —
+but it works and returns exactly one stop. `filter[stop_name]` also works, on
+exact full match only (`Kingsland` returns empty; `Kingsland Train Station`
+returns the station).
 
-Note `route_id` embeds the short name as a prefix: `NX1-203`, `325-221`. Do not
-rely on that — resolve properly through this endpoint, because the CRL rename on
-**13 September 2026** changes both the ids and the short names (Western Line →
-East-West Line, `E-W`).
+Being undocumented, it could be withdrawn without notice. The client should
+surface a clear error if it ever starts 400ing rather than silently degrading.
 
-### 2. Scheduled departures at a stop — one call, everything we need
+Resolved for this project:
+
+| Name | stop_code | stop_id | location_type |
+|---|---|---|---|
+| Kingsland Avenue (bus) | 8213 | `8213-7e021a72` | 0 (stop) |
+| Kingsland Train Station | 122 | `122-34ecc043` | 1 (station) |
+
+## Stations resolve to both platforms — don't ask users to pick one
+
+`stoptrips` on the **parent station** (`location_type: 1`) returns departures
+from every child platform, tagged with the platform's own `stop_id`:
+
+```
+122-34ecc043 -> stop_ids {9305-ef07ca76: 6, 9304-dcb2ed75: 6}
+```
+
+So a train watch stores the station code and filters on `direction_id`. Nobody
+needs to know which platform is which.
+
+## Scheduled departures
 
 ```
 GET /gtfs/v3/stops/{stop_id}/stoptrips
-      ?filter[date]=2026-09-06        # required, YYYY-MM-DD, service date
-      &filter[start_hour]=17          # required, integer 0-23
-      &filter[hour_range]=2           # optional
+      ?filter[date]=2026-09-06 &filter[start_hour]=17 &filter[hour_range]=2
 ```
 
-Each element of `data[].attributes`:
+Returns `departure_time`, `arrival_time`, `trip_id`, `route_id`, `direction_id`,
+`trip_headsign`, `stop_headsign`, `stop_sequence`, `service_date` together. No
+secondary joins needed.
+
+### 404 means "no services in this window"
+
+The single most important finding, and a trap:
+
+```
+122-34ecc043, hour 23, range 1|2|3|4|6  -> 404 for every range
+122-34ecc043, hour 17, range 2          -> 200, 12 rows
+```
+
+Kingsland simply has no 23:00 trains on a Sunday. The API expresses "empty
+result" as **404**, the same status as an unknown stop id.
+
+Therefore: **never treat a 404 from `stoptrips` as a stale/invalid stop_id.**
+Only a 404 from `GET /stops/{id}` means the id has gone stale. Conflating them
+makes the board re-resolve every stop every night.
+
+### The window does not cross midnight
+
+```
+8213, hour 23, range 1 -> 4 rows
+8213, hour 23, range 6 -> 4 rows   (identical; clamped at end of service day)
+```
+
+`hour_range` is clamped to the service day. A window spanning midnight needs a
+second request with `filter[date]` set to the following day. `hour_range` itself
+accepts at least 6 and scales linearly (hour 17: range 1→8 rows, 6→44 rows).
+
+`departure_time` > `24:00:00` is legal GTFS for after-midnight services. **Not
+observed** in these samples — parse tolerantly anyway, don't rely on it.
+
+## Realtime
+
+Use the dedicated trip-updates path, not the combined feed:
+
+```
+GET /realtime/legacy/tripupdates?tripid=<comma separated>   3202 b, 6 entities
+GET /realtime/legacy/?tripid=<same>                         5836 b, 12 entities
+```
+
+The combined feed interleaves `vehicle` position entities we have no use for —
+~45% wasted bytes and heap. `/tripupdates` returns `trip_update` entities only.
+(`/trip-updates`, with a hyphen, is a 404.)
+
+### `stop_time_update` is a single object, not an array
+
+The docs declare `StopTimeUpdate[]`. The API returns one object:
 
 ```json
-{
-  "arrival_time": "05:35:00",
-  "departure_time": "05:35:00",
-  "direction_id": 1,
-  "route_id": "NX1-203",
-  "service_date": "2023-06-01",
-  "stop_headsign": "ALBANY STN",
-  "stop_id": "7036-f1ffa0be",
-  "stop_sequence": 3,
-  "trip_headsign": "Britomart (Lower Albert St) To Albany Station",
-  "trip_id": "1395-27002-19800-2-a27d3190",
-  "trip_start_time": "05:30:00"
+"stop_time_update": {
+  "stop_sequence": 20,
+  "stop_id": "1060-00b64ee7",
+  "arrival":   { "delay": -430, "time": 1788671870, "uncertainty": 0 },
+  "departure": { "delay": -427, "time": 1788671873, "uncertainty": 17 },
+  "schedule_relationship": 0
 }
 ```
 
-This is better than expected: `departure_time` + `trip_id` + `route_id` +
-`direction_id` + `trip_headsign` all arrive together, so no separate
-trips/stop_times joins are needed.
+Worse, it describes the vehicle's **current/next** stop, which is almost never
+our stop — across 6 trips, only 1 happened to carry ours.
 
-Two consequences to handle:
+**So the per-stop delay strategy does not work.** Use the trip-level
+`trip_update.delay` (signed seconds; negative = running early). Observed values
+ranged −427 s to −20 s, i.e. buses genuinely running up to 7 minutes early — a
+board that ignored delay would be materially wrong, not marginally.
 
-- `filter[date]` is a **service date**. A window running past midnight needs a
-  second call for the following date.
-- `departure_time` can exceed `24:00:00` in GTFS (e.g. `25:10:00` = 01:10 next
-  day). The parser must accept hours > 23.
+Opportunistically prefer `stop_time_update.departure.delay` when its `stop_id`
+does match ours; otherwise fall back to `delay`. In practice the fallback is the
+normal path.
 
-### 3. Realtime delays, filtered to the trips we already care about
+### The tripid filter is not exact — re-filter client-side
 
-```
-GET /realtime/legacy/?tripid=<comma-separated trip_ids>
-```
+Requesting 6 trip ids returned 7 distinct trips; the extra one
+(`20-02006-63000-2-191733d1`) was a different direction on the same route. The
+client must match returned `trip_id`s against its own set and discard the rest.
 
-`tripid` filtering is the critical part — the unfiltered feed is every active
-trip in Auckland and would not fit in ESP32 heap.
+### Other realtime details
 
-```json
-{
-  "status": "OK",
-  "response": {
-    "header": { "gtfs_realtime_version": "1.0", "timestamp": 259982000 },
-    "entity": [{
-      "id": "259982000",
-      "trip_update": {
-        "trip": { "trip_id": "...", "route_id": "...", "direction_id": 0,
-                  "start_time": "2022-04-07", "start_date": "20190528",
-                  "schedule_relationship": 0 },
-        "vehicle": { "id": "512000545", "label": "DALDY", "license_plate": "ZMZ7645" },
-        "stop_time_update": [{
-          "stop_sequence": 1,
-          "stop_id": "6955-01-01",
-          "arrival":   { "delay": -441, "time": 1559005659 },
-          "departure": { "delay": -441, "time": 1559005659 }
-        }],
-        "timestamp": 1558997153,
-        "delay": -67
-      }
-    }]
-  },
-  "error": {}
-}
-```
+- `response.header.timestamp` is a **float** (`1788673055.67`), not an integer.
+- Entity shape is `{id, trip_update, is_deleted}`.
+- `trip.schedule_relationship: 3` = CANCELED.
+- Protobuf available via `Accept: application/x-protobuf`; JSON is used so
+  ArduinoJson can stream-filter without a protobuf dependency.
 
-- Prefer the `stop_time_update[]` entry matching our `stop_sequence`; fall back
-  to the trip-level `delay` when the feed doesn't include our stop.
-- `delay` is **signed seconds** — negative means running early.
-- `schedule_relationship: 3` on the trip means CANCELED. Show it, don't hide it.
-- Protobuf is available via `Accept: application/x-protobuf`; we use JSON because
-  ArduinoJson can stream-filter it without a protobuf dependency.
-
-Other realtime operations exist (Trip Updates, Vehicle Positions, Service
-Alerts, Ferry Positions) but the Combined Feed above covers our needs in one
-request.
-
-## The one real gap: stop code → stop_id
-
-`stop_id` is **not** the stop code on the pole. It's `{stop_code}-{hash}`:
+## Routes
 
 ```
-stop_code "100"  ->  stop_id "100-56c57897"   (Papatoetoe Train Station)
-stop_code "7036" ->  stop_id "7036-f1ffa0be"
+GET /gtfs/v3/routes?filter[route_short_name]=20 -> route_id 20-202, route_type 3
+GET /gtfs/v3/routes?filter[route_type]=2        -> all rail
 ```
 
-So stop 8213 is `8213-<hash>` and we must learn the hash. The problem:
+### Bus routes carry no colour
 
-```
-GET /gtfs/v3/stops[?filter[date]]     # filter[date] is the ONLY filter
-GET /gtfs/v3/stops/{id}               # needs the full hashed id already
-```
+Route 20 returns **only** `agency_id, route_id, route_long_name,
+route_short_name, route_type`. No `route_color` — the API omits null/empty
+fields, and AT doesn't colour bus routes. Rail routes do carry colour:
 
-There is no `filter[stop_code]`. Invalid filters return a clean 400
-(`"Filter is invalid. Cannot find the specified filter"`), so this is cheap to
-probe.
+| route_id | short | colour |
+|---|---|---|
+| `WEST-201` | WEST | `#97C93D` |
+| `E-W-201` | E-W | `#97C93D` |
+| `O-W-201` | O-W | `#00AEEF` |
+| `ONE-201` | ONE | `#00AEEF` |
+| `STH-201` | STH | `#D52923` |
+| `S-C-201` | S-C | `#D52923` |
+| `EAST-201` | EAST | `#FDB913` |
+| `HUIA-404` | HUIA | `#000000` |
 
-**Untested, in priority order — settle these with curl before writing the
-client:**
+So the UI needs its own fallback palette keyed on `route_type` for buses, and
+should only use `route_color` when present. `#000000` (HUIA) must be treated as
+"unusable on a dark background" rather than taken literally.
 
-1. Does `/gtfs/v3/stops/8213` resolve by bare code? (One call, best case.)
-2. Does an undocumented `filter[stop_code]=8213` work? (400 = no.)
-3. Fallback that definitely works: `GET /gtfs/v3/stops` once, stream-parse for
-   the matching `stop_code`, cache the hashed `stop_id` in NVS forever. Slow and
-   large, but it is a one-time setup-only operation and ArduinoJson's streaming
-   filter keeps memory constant regardless of response size.
+### The CRL rename is already in the feed
 
-Design accordingly: `resolve_stop_id()` is one function with three strategies
-tried in order, and the result is cached. Whichever wins, the rest of the
-firmware is unaffected.
+Both `WEST-201` and `E-W-201` exist **now**, sharing a colour, as do `ONE`/`O-W`
+and `STH`/`S-C`. Only `WEST-201` currently has trips at Kingsland. On
+13 September 2026 the trips move to `E-W-201`.
 
-Re-resolve when a cached `stop_id` starts returning 404 — the hash changes when
-AT publishes a new GTFS version (`GET /gtfs/v3/versions` reports the active one).
+This is why a watch should **not** pin a route short name for rail. See below.
 
-## Kingsland, and "to the city"
+## What this means for the two configured watches
 
-Kingsland has platforms; `location_type`, `parent_station` and `platform_code`
-distinguish them. Rather than make the user work that out, the setup UI should
-list what the API returns for the stop and let them pick the direction by its
-real `trip_headsign`, storing the chosen `direction_id`.
+Observed at 17:37 on Sunday 2026-09-06:
+
+**Bus — stop 8213**, 16 departures in 2 hours across `20-202`, `22R-202`,
+`22N-202`. Every one is `direction_id: 0`. Route 20 reads
+`St Lukes To Wynyard Quarter Via Kingsland` — city-bound.
+
+**Train — station 122**, 12 departures, all `WEST-201`, split evenly:
+
+| direction_id | headsign | meaning |
+|---|---|---|
+| 0 | `Swanson To Brit 2 Via Newmarket 2` | **toward the city** |
+| 1 | `Brit 2 To Swanson 1 Via Newmarket 1` | away from the city |
+
+So: bus = stop 8213 + route `20` + direction 0; train = station 122 + direction
+0 + **no route filter at all**. Leaving the rail route unpinned means the board
+keeps working on 14 September without anyone touching it, because whatever line
+is running city-bound through Kingsland is by definition the one you want.

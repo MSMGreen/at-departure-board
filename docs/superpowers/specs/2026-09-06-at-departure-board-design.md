@@ -74,14 +74,33 @@ Stored in NVS. A watch is:
 }
 ```
 
-`kind` is **not** configured — it is derived from the route's GTFS `route_type`
-(2 = Rail → train sprite, 3 = Bus → bus sprite). One less thing to get wrong.
+`kind` is **not** configured — it is derived from the GTFS `route_type` of the
+departures returned (2 = Rail → train sprite, 3 = Bus → bus sprite). One less
+thing to get wrong.
 
 Direction is not typed either. The setup UI calls `stoptrips` for the stop,
 shows the distinct `trip_headsign` values it actually returns, and the user
 picks the one that reads like their destination; the stored value is the
 `direction_id` behind it. Nobody should have to know what `direction_id: 0`
 means.
+
+**`route_short_name` is optional. Empty means "any route".** This matters more
+than it looks. At a train station, every city-bound departure is one you'd take,
+whatever the line is called — so leaving it blank is both what the user wants
+and the thing that carries the board through the 13 September rename with no
+reconfiguration, as `WEST-201` trips become `E-W-201` trips. Pin a route only
+when a stop is served by routes you would not board, as bus stop 8213 is.
+
+The two configured watches, from live data (see `docs/at-api-notes.md`):
+
+| | stop_code | route | direction_id | resolves to |
+|---|---|---|---|---|
+| Bus | 8213 | `20` | 0 | `St Lukes To Wynyard Quarter Via Kingsland` |
+| Train | 122 | *(none)* | 0 | `Swanson To Brit 2 Via Newmarket 2` |
+
+Stations are configured by their own code (Kingsland = 122, `location_type: 1`);
+`stoptrips` on a station returns every platform's departures, so platforms never
+surface in the UI at all.
 
 Maximum four watches: at five the lane height drops below what stays readable
 across a room.
@@ -109,24 +128,42 @@ State machine: `BOOT → (no config?) PORTAL → SYNC → RUN ⇄ DIM → SLEEP 
 Endpoint specifics are in `docs/at-api-notes.md`, verified against the portal.
 Three loops at deliberately different speeds:
 
-**Route resolution — once per watch, cached until the GTFS version changes.**
-`GET /gtfs/v3/routes?filter[route_short_name]=20` → `route_id`, `route_type`,
-`route_color`, `route_text_color`. Resolving by short name rather than storing a
-`route_id` is what carries the board through the 13 Sep rename. AT's own
-`route_color` drives the badge, so the board matches the signage.
+**Route resolution — only for watches that pin a route.**
+`GET /gtfs/v3/routes?filter[route_short_name]=20` → `route_id`, `route_type`.
+Resolving by short name rather than storing a `route_id` is what carries a
+pinned watch through the 13 Sep rename.
+
+Colour comes from `route_color` **when the API supplies it, which for buses it
+does not** — AT omits null fields and only colours rail. So the badge palette is
+ours, keyed on `route_type`, with `route_color` overriding when present. Rail
+colours are real and worth honouring (`E-W` `#97C93D`). `#000000` (HUIA) is
+treated as absent rather than painted black on a dark ground.
 
 **Schedule — every 15 minutes, plus on date rollover.**
 `GET /gtfs/v3/stops/{stop_id}/stoptrips?filter[date]=…&filter[start_hour]=…&filter[hour_range]=2`
-Filter client-side to the watch's `route_id` + `direction_id`. One request per
-watch; yields `departure_time` and `trip_id` per candidate departure.
+Filter client-side to the watch's `direction_id`, and to its `route_id` if one is
+pinned. One request per watch.
+
+`hour_range` is **clamped to the service day** — it does not roll past midnight.
+A window crossing midnight needs a second request with the next `filter[date]`.
 
 **Realtime — every 30 s while anything is within 30 min, else every 2 min.**
-`GET /realtime/legacy/?tripid=<all cached trip_ids, comma separated>` — **one
-request covering every watch**. Unfiltered this feed is all of Auckland and will
-not fit in heap; the `tripid` filter is load-bearing, not an optimisation.
+`GET /realtime/legacy/tripupdates?tripid=<all cached trip_ids>` — **one request
+covering every watch**. Two things make this endpoint the right one: unfiltered
+it would be all of Auckland and would not fit in heap, and the combined feed
+(`/realtime/legacy/`) interleaves vehicle-position entities we never use, ~45%
+wasted bytes.
 
-Per trip, prefer the `stop_time_update[]` entry whose `stop_sequence` matches
-ours and read `departure.delay`; fall back to the trip-level `delay`.
+Delay comes from the **trip-level `trip_update.delay`** (signed seconds,
+negative = early). The documented per-stop route does not work in practice:
+`stop_time_update` arrives as a single object rather than the documented array,
+and it describes the vehicle's *next* stop, which is rarely ours. We prefer it
+opportunistically when its `stop_id` matches, and fall back to `delay` — which
+is the normal path. This is not a marginal correction: observed delays reached
+−427 s, buses running seven minutes *early*.
+
+The `tripid` filter is inexact — 6 requested ids returned 7 trips — so the
+client re-filters returned `trip_id`s against its own set.
 
 **Render — 15 fps.** ETA is computed locally as
 `scheduled + delay − now`, so the countdown ticks every second and the vehicle
@@ -147,28 +184,37 @@ NTP with full `Pacific/Auckland` rules, not a fixed offset. NZDT begins
 27 September 2026 — three weeks out, and a board an hour wrong is worse than a
 board that is blank.
 
-## 6. Resolving stop code → stop_id
+## 6. Resolving stop code → stop_id — settled
 
-The number on the pole is not the API's id: `stop_id` is `{stop_code}-{hash}`
-(`100` → `100-56c57897`). `/gtfs/v3/stops` accepts **only** `filter[date]`;
-there is no `filter[stop_code]`.
+The number on the pole is not the API's id: `stop_id` is `{stop_code}-{hash}`.
+Probed against the live API:
 
-`resolve_stop_id(code)` tries three strategies in order and caches the result in
-NVS:
+```
+GET /gtfs/v3/stops/8213                   -> 404
+GET /gtfs/v3/stops?filter[stop_code]=8213 -> 200, 223 bytes, one stop
+```
 
-1. `GET /gtfs/v3/stops/{code}` — does the bare code resolve? One call.
-2. `GET /gtfs/v3/stops?filter[stop_code]={code}` — undocumented; a clean 400
-   means no.
-3. `GET /gtfs/v3/stops`, stream-parse for the matching `stop_code`. Multi-
-   megabyte, but ArduinoJson's streaming filter holds memory constant and this
-   runs once, during setup, behind a progress bar.
+`filter[stop_code]` works and is what we use, despite the portal documenting
+only `filter[date]`. The design that fell out of the earlier uncertainty — a
+streaming parse of every stop in Auckland — is **not needed and is dropped**.
 
-Strategy 3 always works, so nothing is blocked on the answer. **Settling 1 and 2
-with curl is the first task of implementation** — the difference is one request
-versus a multi-megabyte stream, and it is five minutes of work to find out.
+Because the filter is undocumented it could be withdrawn. If it ever returns
+400, the board says so plainly rather than silently degrading; that is a
+one-line failure path, not a fallback implementation.
 
-Cached ids are re-resolved on a 404, which is how a new published GTFS version
-surfaces.
+Resolved ids are cached in NVS: `8213` → `8213-7e021a72`,
+`122` → `122-34ecc043` (Kingsland Train Station).
+
+### 404 does not mean the id is stale
+
+`stoptrips` returns **404 for "no services in this window"** — the same status as
+an unknown stop. Kingsland returns 404 for every `hour_range` at hour 23 on a
+Sunday, simply because the trains have stopped.
+
+So a 404 from `stoptrips` renders the empty state and nothing else. Only a 404
+from `GET /stops/{id}` invalidates a cached id. Conflating the two would make
+the board re-resolve every stop every night, which is exactly what the first
+draft of this spec said to do.
 
 ## 7. Screen
 
@@ -208,7 +254,9 @@ The board is in a hallway and will be believed. It must not lie.
 | Trip cancelled (`schedule_relationship: 3`) | Greyed vehicle, struck-through time, promote the next. Surfaced, never dropped. |
 | 401 | "Check API key" plus the config URL. |
 | 429 / 5xx | Exponential backoff to a 5-minute cap; last good data stays up. |
-| No departures in window | Parked vehicle, next service in text. |
+| `stoptrips` 404 or empty | Normal empty state: parked vehicle, next service in text. **Not** an error, and never a reason to re-resolve the stop. |
+| `/stops/{id}` 404 | Cached id is stale (new GTFS version) — re-resolve from `stop_code`. |
+| `filter[stop_code]` starts 400ing | Say so explicitly; the undocumented filter has been withdrawn and needs a code change. |
 | No config | Boot into `PORTAL`. |
 
 Brightness follows use rather than a light sensor: full while anything is within
@@ -220,13 +268,25 @@ when someone walks up to it.
 ## 9. Testing
 
 Native unit tests (PlatformIO `native` env) over `schedule` and `clock`, driven
-by fixtures captured with curl during the first task and committed to
-`test/fixtures/`. Real responses, not invented ones.
+by the fixtures already captured in `test/fixtures/`. Real responses, not
+invented ones.
 
-Cases: `25:10:00` rollover; midnight-spanning window needing two date queries;
-the 27 Sep DST transition; negative delay (running early); cancelled trip;
-missing `stop_time_update` for our stop, falling back to trip-level delay; empty
-timetable; malformed JSON; a `stop_id` that 404s.
+Cases, each traceable to something actually observed unless marked:
+
+- `stop_time_update` as a single object, not an array
+- `stop_time_update` describing a stop that is not ours → trip-level `delay`
+- `stop_time_update` that *does* match ours → prefer `departure.delay`
+- negative delay (−427 s observed: seven minutes early)
+- realtime returning a trip we did not request → discarded
+- `header.timestamp` as a float, not an integer
+- `stoptrips` 404 → empty state, cache untouched
+- window clamped at the service day → second date query issued
+- a rail watch with no `route_short_name` accepting whatever line is running
+- a bus route with no `route_color` → fallback palette; `#000000` → fallback
+- `25:10:00` after-midnight time (*unobserved in samples; parse tolerantly*)
+- 27 Sep DST transition (*synthetic*)
+- cancelled trip, `schedule_relationship: 3` (*synthetic*)
+- malformed JSON, truncated response
 
 `tools/mockup.py` covers layout, and a `DEMO_MODE` build flag feeds synthetic
 departures so the UI can be exercised — including the 1am and cancelled states —
@@ -254,8 +314,19 @@ model: ESP32 and ILI9341 board outlines, mounting hole positions and pitch,
 display active-area offset within its PCB, and USB connector position. In
 `docs/enclosure.md`, measured during the hardware bring-up task.
 
-## 12. First task
+## 12. API verification — done
 
-Before any firmware: get a key, curl the endpoints, settle §6 strategies 1 and
-2, and commit the responses as `test/fixtures/`. Every parser is then written
-against real bytes rather than a documentation sample.
+Completed 2026-09-06 before any firmware was written. Fixtures are committed to
+`test/fixtures/`; findings are in `docs/at-api-notes.md`. Five things the live
+API does that its documentation does not describe, each of which would have been
+a defect:
+
+1. `filter[stop_code]` exists and works — the streaming-parse fallback is dropped.
+2. `stoptrips` returns 404 for an empty window, not just an unknown stop.
+3. `stop_time_update` is a single object, not an array, and usually describes a
+   stop that isn't ours — so trip-level `delay` is the real source.
+4. The `tripid` filter is inexact and needs client-side re-filtering.
+5. Bus routes carry no `route_color` at all.
+
+Fixtures were captured **before** the 13 September rename. They should be
+re-captured after it, as a live test of whether unpinned rail watches hold.

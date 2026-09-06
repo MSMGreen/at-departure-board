@@ -29,7 +29,7 @@ C = {
     "text":     (233, 238, 245),
     "dim":      (128, 143, 165),
     "bus":      (0, 168, 224),   # AT-ish cyan for the bus
-    "train":    (86, 176, 74),   # Western / E-W green
+    "train":    (151, 201, 61),  # AT's own route_color for WEST / E-W: #97C93D
     "live":     (120, 220, 130),
     "warn":     (245, 176, 66),
     "road":     (38, 44, 55),
@@ -115,14 +115,17 @@ SPRITE_W = {"bus": 34, "train": 48}
 
 
 # ------------------------------------------------------------- mock data ---
+# Real values, from live API responses in test/fixtures/ (2026-09-06 17:37).
+# Bus routes carry no route_color from AT, so C["bus"] is our fallback palette;
+# the rail colour is AT's own #97C93D for WEST / E-W.
 WATCHES = [
-    dict(kind="bus", badge="20", where="Stop 8213", dest="to City Centre",
+    dict(kind="bus", badge="20", where="Kingsland Ave", dest="to Wynyard Quarter",
          mins=[4, 17], live=[True, False], colour=C["bus"]),
-    dict(kind="train", badge="E-W", where="Kingsland", dest="to Waitemata",
+    dict(kind="train", badge="E-W", where="Kingsland Stn", dest="to Britomart",
          mins=[7, 22], live=[True, True], colour=C["train"]),
-    dict(kind="bus", badge="24B", where="Stop 8213", dest="to New Lynn",
+    dict(kind="bus", badge="22R", where="Kingsland Ave", dest="to City Centre",
          mins=[11, 31], live=[True, False], colour=C["bus"]),
-    dict(kind="train", badge="O-W", where="Kingsland", dest="to Onehunga",
+    dict(kind="train", badge="O-W", where="Kingsland Stn", dest="to Onehunga",
          mins=[19, 49], live=[False, False], colour=C["train"]),
 ]
 
@@ -136,7 +139,7 @@ def base(bg=None):
 
 def status_bar(d, y=0, h=18, clock="17:42"):
     d.rectangle((0, y, W, y + h), fill=C["panel"])
-    text(d, (6, y + h / 2), "Sandringham", REG(11), C["dim"], anchor="lm")
+    text(d, (6, y + h / 2), "Kingsland", REG(11), C["dim"], anchor="lm")
     text(d, (W - 6, y + h / 2), clock, MONO(12), C["text"], anchor="rm")
     live_dot(d, W - 46, y + h / 2, True)
     text(d, (W - 54, y + h / 2), "live", REG(10), C["dim"], anchor="rm")
