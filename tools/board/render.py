@@ -62,7 +62,7 @@ def _status_bar(d, board, th):
     d.ellipse((dx - 3, mid - 3, dx + 3, mid + 3), fill=colour)
 
 
-def _lane(d, ln, watch, t, index, th):
+def _lane(d, ln, watch, t, index, th, size):
     card = th.colour("panel") if index % 2 == 0 else th.colour("panel_hi")
     d.rounded_rectangle(
         (ln.rect.x0 + layout.MARGIN, ln.rect.y0 + 3,
@@ -71,7 +71,7 @@ def _lane(d, ln, watch, t, index, th):
 
     nxt = watch.next
     colour = th.badge_colour(watch.kind, watch.route_color)
-    sprite = th.sprite("compact", watch.kind)
+    sprite = th.sprite(size, watch.kind)
 
     # route badge
     f = bold(13)
@@ -135,8 +135,9 @@ def render(board: Board, t: float = 0.0, theme=None) -> Image.Image:
     d = ImageDraw.Draw(img)
     _status_bar(d, board, th)
     n = len(board.watches)
+    size = layout.size_class(n)
     for i, watch in enumerate(board.watches):
-        _lane(d, layout.lane(i, n), watch, t, i, th)
+        _lane(d, layout.lane(i, n), watch, t, i, th, size)
     if board.dimmed:
         img = Image.eval(img, lambda v: int(v * DIM_FACTOR))
     return img

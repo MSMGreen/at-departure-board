@@ -109,3 +109,20 @@ def test_the_widest_sprite_always_fits_the_track(n):
 
 def test_lane_index_selects_the_right_band():
     assert layout.lane(2, 4).rect.y0 == layout.lane_rects(4)[2].y0
+
+
+@pytest.mark.parametrize("n,expected", [(1, "large"), (2, "large"),
+                                        (3, "compact"), (4, "compact")])
+def test_size_class_follows_lane_count(n, expected):
+    assert layout.size_class(n) == expected
+
+
+def test_large_art_fits_a_two_lane_board():
+    # lane 111px: badge ends at y0+24, track at y1-12. 40px art must clear it.
+    ln = layout.lane(0, 2)
+    assert ln.sprite_baseline - 44 > ln.badge.y1
+
+
+def test_compact_art_fits_a_four_lane_board():
+    ln = layout.lane(0, 4)
+    assert ln.sprite_baseline - 18 > ln.badge.y1

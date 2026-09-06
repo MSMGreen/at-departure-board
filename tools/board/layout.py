@@ -18,6 +18,18 @@ PAD = 6             # gap from card edge to content
 MARKER_INSET = 58   # distance from right edge to the stop marker
 TRACK_LIFT = 12     # track height above the card's bottom edge
 
+LARGE_MAX_LANES = 2
+
+
+def size_class(n):
+    """Which sprite set fits n lanes.
+
+    At 3+ lanes the lane is 74px or less and large art collides with the
+    badge, so the compact set is not a preference - it is the only thing
+    that fits.
+    """
+    return "large" if n <= LARGE_MAX_LANES else "compact"
+
 
 class Rect(NamedTuple):
     x0: int
