@@ -7,7 +7,7 @@ board can be read from across a room without resolving any digits.
 
 from typing import List, NamedTuple
 
-from . import sprites
+
 
 W, H = 320, 240
 STATUS_H = 18
@@ -74,12 +74,15 @@ def lane(index, n) -> Lane:
     )
 
 
-def vehicle_x(eta_s, lane, kind):
+def vehicle_x(eta_s, lane, sprite_w):
     """Map seconds-until-arrival to an x position on the lane's track.
 
     HORIZON_S or more -> the left end. Zero or less -> touching the marker.
+
+    Takes a width rather than a kind because the width now depends on the
+    theme and the size class, which layout has no business knowing about.
     """
-    sw = sprites.SPRITES[kind].width
+    sw = sprite_w
     x_start = lane.track.x0
     x_stop = lane.marker_x - sw
     clamped = max(0, min(int(eta_s), HORIZON_S))

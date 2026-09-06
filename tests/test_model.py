@@ -1,6 +1,5 @@
 import pytest
 
-from tools.board import palette
 from tools.board.model import Board, Departure, Watch
 
 
@@ -32,15 +31,6 @@ def test_following_is_none_when_only_one_departure():
 def test_departures_are_ordered_by_eta_regardless_of_input_order():
     x = w(departures=[Departure(900), Departure(120), Departure(400)])
     assert [d.eta_s for d in x.departures] == [120, 400, 900]
-
-
-def test_a_bus_takes_the_fallback_colour():
-    assert w().colour == palette.kind_colour("bus")
-
-
-def test_rail_takes_ats_colour_when_present():
-    x = w(kind="train", route_color="97C93D")
-    assert x.colour == (151, 201, 61)
 
 
 def test_departed_is_negative_eta():

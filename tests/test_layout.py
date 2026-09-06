@@ -1,6 +1,10 @@
 import pytest
 
-from tools.board import layout, sprites
+from tools.board import layout, themes
+
+TRANSIT = themes.get("transit")
+BUS_W = TRANSIT.sprite("compact", "bus").width
+TRAIN_W = TRANSIT.sprite("compact", "train").width
 
 
 # --- lane division -------------------------------------------------------
@@ -37,42 +41,42 @@ def test_lane_count_outside_one_to_four_is_rejected(n):
 
 def test_at_the_horizon_the_vehicle_is_at_the_far_left():
     ln = layout.lane(0, 2)
-    assert layout.vehicle_x(layout.HORIZON_S, ln, "bus") == ln.track.x0
+    assert layout.vehicle_x(layout.HORIZON_S, ln, BUS_W) == ln.track.x0
 
 
 def test_at_zero_the_vehicle_has_arrived_at_the_marker():
     ln = layout.lane(0, 2)
-    expected = ln.marker_x - sprites.SPRITES["bus"].width
-    assert layout.vehicle_x(0, ln, "bus") == expected
+    expected = ln.marker_x - BUS_W
+    assert layout.vehicle_x(0, ln, BUS_W) == expected
 
 
 def test_beyond_the_horizon_clamps_to_the_far_left():
     ln = layout.lane(0, 2)
-    assert layout.vehicle_x(99999, ln, "bus") == ln.track.x0
+    assert layout.vehicle_x(99999, ln, BUS_W) == ln.track.x0
 
 
 def test_after_departure_clamps_to_the_marker():
     ln = layout.lane(0, 2)
-    assert layout.vehicle_x(-600, ln, "bus") == layout.vehicle_x(0, ln, "bus")
+    assert layout.vehicle_x(-600, ln, BUS_W) == layout.vehicle_x(0, ln, BUS_W)
 
 
 def test_half_the_horizon_is_about_half_the_track():
     ln = layout.lane(0, 2)
-    lo = layout.vehicle_x(layout.HORIZON_S, ln, "bus")
-    hi = layout.vehicle_x(0, ln, "bus")
-    mid = layout.vehicle_x(layout.HORIZON_S // 2, ln, "bus")
+    lo = layout.vehicle_x(layout.HORIZON_S, ln, BUS_W)
+    hi = layout.vehicle_x(0, ln, BUS_W)
+    mid = layout.vehicle_x(layout.HORIZON_S // 2, ln, BUS_W)
     assert abs(mid - (lo + hi) // 2) <= 1
 
 
 def test_position_advances_monotonically_as_time_runs_down():
     ln = layout.lane(0, 3)
-    xs = [layout.vehicle_x(s, ln, "train") for s in range(1200, -1, -30)]
+    xs = [layout.vehicle_x(s, ln, TRAIN_W) for s in range(1200, -1, -30)]
     assert xs == sorted(xs)
 
 
 def test_a_train_is_wider_so_it_stops_further_left_than_a_bus():
     ln = layout.lane(0, 2)
-    assert layout.vehicle_x(0, ln, "train") < layout.vehicle_x(0, ln, "bus")
+    assert layout.vehicle_x(0, ln, TRAIN_W) < layout.vehicle_x(0, ln, BUS_W)
 
 
 # --- lane internals ------------------------------------------------------
@@ -100,7 +104,7 @@ def test_everything_stays_inside_its_lane(n):
 @pytest.mark.parametrize("n", [1, 2, 3, 4])
 def test_the_widest_sprite_always_fits_the_track(n):
     ln = layout.lane(0, n)
-    assert ln.track.width >= sprites.SPRITES["train"].width
+    assert ln.track.width >= TRAIN_W
 
 
 def test_lane_index_selects_the_right_band():

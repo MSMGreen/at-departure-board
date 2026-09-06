@@ -7,8 +7,6 @@ realtime, so the simulator and the device agree on vocabulary.
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from . import palette
-
 STALE_AFTER_S = 90
 MAX_WATCHES = 4
 
@@ -37,10 +35,6 @@ class Watch:
         self.departures = sorted(self.departures, key=lambda d: d.eta_s)
 
     @property
-    def colour(self):
-        return palette.resolve_badge_colour(self.kind, self.route_color)
-
-    @property
     def next(self):
         return self.departures[0] if self.departures else None
 
@@ -55,6 +49,7 @@ class Board:
     clock: str
     stale_s: int = 0
     dimmed: bool = False
+    theme: str = "transit"
 
     def __post_init__(self):
         if not 1 <= len(self.watches) <= MAX_WATCHES:

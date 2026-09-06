@@ -1,7 +1,13 @@
 import pytest
 
 from tools import export_sprites as ex
-from tools.board import palette, sprites
+from tools.board import palette, themes
+
+TRANSIT = themes.get("transit")
+
+
+def _sprite(kind):
+    return TRANSIT.sprite("compact", kind)
 
 
 def test_transparent_is_index_zero():
@@ -18,13 +24,13 @@ def test_indices_fit_in_a_nibble():
 
 @pytest.mark.parametrize("name", ["bus", "train"])
 def test_packed_size_is_two_pixels_per_byte(name):
-    s = sprites.SPRITES[name]
+    s = _sprite(name)
     assert len(ex.pack(s)) == (s.width + 1) // 2 * s.height
 
 
 @pytest.mark.parametrize("name", ["bus", "train"])
 def test_pack_round_trips_back_to_the_original_grid(name):
-    s = sprites.SPRITES[name]
+    s = _sprite(name)
     data = ex.pack(s)
     rev = {v: k for k, v in ex.ROLE_INDEX.items()}
     stride = (s.width + 1) // 2
@@ -43,9 +49,9 @@ def test_header_declares_both_sprites():
 
 def test_header_declares_dimensions_matching_python():
     h = ex.render_header()
-    assert f"SPRITE_BUS_W {sprites.SPRITES['bus'].width}" in h
-    assert f"SPRITE_TRAIN_W {sprites.SPRITES['train'].width}" in h
-    assert "SPRITE_H 14" in h
+    assert f"SPRITE_BUS_W {_sprite('bus').width}" in h
+    assert f"SPRITE_TRAIN_W {_sprite('train').width}" in h
+    assert f"SPRITE_H {_sprite('bus').height}" in h
 
 
 def test_header_has_an_include_guard():
