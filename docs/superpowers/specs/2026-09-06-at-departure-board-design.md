@@ -13,10 +13,10 @@ A always-on display showing up to four "watches". A watch is one answer to
 "when does my next one leave?" — a stop, a route, and a direction. The two that
 motivate the project:
 
-| Watch | Stop | Route | Direction |
+| Watch | Stop | Route | Toward |
 |---|---|---|---|
-| Bus | 8213 | `20` | to the city |
-| Train | Kingsland | Western / `E-W` after 13 Sep 2026 | to the city |
+| Bus | 8213 | `20` | Wynyard Quarter |
+| Train | Kingsland | *(any line)* | Waitematā |
 
 Each watch gets a lane. The vehicle's **position along its lane encodes time to
 arrival** — it enters at the 20-minute mark and pulls into the stop as the
@@ -69,10 +69,14 @@ Stored in NVS. A watch is:
   "label": "Mine",
   "stop_code": "8213",
   "route_short_name": "20",
-  "direction_id": 0,
+  "toward_stop_code": "1060",
   "enabled": true
 }
 ```
+
+**`direction_id` is deliberately not stored.** See §3a — this changed on
+13 September 2026 and the original design would have shipped a silent, confident
+wrong answer.
 
 `kind` is **not** configured — it is derived from the GTFS `route_type` of the
 departures returned (2 = Rail → train sprite, 3 = Bus → bus sprite). One less
@@ -80,9 +84,10 @@ thing to get wrong.
 
 Direction is not typed either. The setup UI calls `stoptrips` for the stop,
 shows the distinct `trip_headsign` values it actually returns, and the user
-picks the one that reads like their destination; the stored value is the
-`direction_id` behind it. Nobody should have to know what `direction_id: 0`
-means.
+picks the one that reads like their destination. What gets stored is the
+**stop they are travelling toward**, not the direction integer behind it.
+Nobody should have to know what `direction_id: 0` means — and as it turns out,
+nor should the firmware.
 
 **`route_short_name` is optional. Empty means "any route".** This matters more
 than it looks. At a train station, every city-bound departure is one you'd take,
@@ -93,10 +98,43 @@ when a stop is served by routes you would not board, as bus stop 8213 is.
 
 The two configured watches, from live data (see `docs/at-api-notes.md`):
 
-| | stop_code | route | direction_id | resolves to |
-|---|---|---|---|---|
-| Bus | 8213 | `20` | 0 | `St Lukes To Wynyard Quarter Via Kingsland` |
-| Train | 122 | *(none)* | 0 | `Swanson To Brit 2 Via Newmarket 2` |
+| | stop_code | route | toward |
+|---|---|---|---|
+| Bus | 8213 | `20` | `1060` Wynyard Quarter |
+| Train | 122 | *(none)* | `133` Waitematā |
+
+## 3a. Why direction is derived, not stored
+
+The first version of this spec stored `direction_id`, chosen once at setup. CRL
+opened on 13 September 2026 and the meaning inverted at Kingsland:
+
+| | pre-CRL | post-CRL |
+|---|---|---|
+| `direction_id: 0` | `Swanson To Brit 2` — to the city | `Manukau To Swanson` — away |
+| `direction_id: 1` | away | `Swanson To Manukau` — to the city |
+
+A board built to that spec would have shown trains to Swanson: no error, no
+stale marker, complete confidence. That is the worst failure this project can
+have, and it would have happened one week after the design was written.
+
+Text matching does not rescue it. Every pre-CRL headsign changed, and because
+CRL made the line a through-route, *both* directions now read `Via Waitemata` —
+only the destination distinguishes them.
+
+So direction is **derived at every schedule refresh** from a stored destination:
+
+1. Take one candidate trip per `direction_id` from `stoptrips`.
+2. `GET /gtfs/v3/trips/{trip_id}/stops` — the stop list, in sequence order.
+3. Find our stop; check whether `toward_stop_code` appears after it, matching
+   either `stop_code` or `parent_station` (trips list platforms, not stations).
+4. Cache the winning `direction_id` until the next refresh.
+
+Direction is a property of `(route_id, direction_id)`, not of a trip, so this
+costs **one extra request per watch per refresh** — about 8 per hour.
+
+If neither direction serves the target, the board says **"check config"** rather
+than guessing. A watch that cannot prove which way it is pointing must not
+display a time.
 
 Stations are configured by their own code (Kingsland = 122, `location_type: 1`);
 `stoptrips` on a station returns every platform's departures, so platforms never
@@ -141,8 +179,9 @@ treated as absent rather than painted black on a dark ground.
 
 **Schedule — every 15 minutes, plus on date rollover.**
 `GET /gtfs/v3/stops/{stop_id}/stoptrips?filter[date]=…&filter[start_hour]=…&filter[hour_range]=2`
-Filter client-side to the watch's `direction_id`, and to its `route_id` if one is
-pinned. One request per watch.
+Filter client-side to the **derived** direction (§3a), and to its `route_id` if
+one is pinned. One request per watch, plus one `trips/{id}/stops` call to
+re-derive the direction.
 
 `hour_range` is **clamped to the service day** — it does not roll past midnight.
 A window crossing midnight needs a second request with the next `filter[date]`.
@@ -280,6 +319,10 @@ Cases, each traceable to something actually observed unless marked:
 - realtime returning a trip we did not request → discarded
 - `header.timestamp` as a float, not an integer
 - `stoptrips` 404 → empty state, cache untouched
+- direction cannot be derived: neither direction serves `toward_stop_code`
+  → "check config", no times shown (post-CRL regression)
+- direction flips between refreshes → the new one is used, silently and
+  correctly
 - window clamped at the service day → second date query issued
 - a rail watch with no `route_short_name` accepting whatever line is running
 - a bus route with no `route_color` → fallback palette; `#000000` → fallback
@@ -328,5 +371,17 @@ a defect:
 4. The `tripid` filter is inexact and needs client-side re-filtering.
 5. Bus routes carry no `route_color` at all.
 
-Fixtures were captured **before** the 13 September rename. They should be
-re-captured after it, as a live test of whether unpinned rail watches hold.
+### Re-verified after CRL — 2026-09-13
+
+Fixtures re-captured in `test/fixtures/post-crl/`. The result was one vindication
+and one defect:
+
+- **Unpinned rail routes worked exactly as designed.** `WEST-201` stopped
+  running at Kingsland, `E-W-201` took over, and nothing needed reconfiguring.
+  Stop id hashes survived the GTFS version change; the bus was untouched.
+- **Stored `direction_id` inverted** and would have shown trains going the wrong
+  way, confidently and silently. §3a replaces it with a derived direction.
+
+The lesson generalises: anything stored at setup that encodes a *relationship*
+rather than an *identity* will rot. Stop codes and route short names are
+identities and survived. `direction_id` was a relationship and did not.

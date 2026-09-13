@@ -200,3 +200,103 @@ So: bus = stop 8213 + route `20` + direction 0; train = station 122 + direction
 0 + **no route filter at all**. Leaving the rail route unpinned means the board
 keeps working on 14 September without anyone touching it, because whatever line
 is running city-bound through Kingsland is by definition the one you want.
+
+---
+
+# Post-CRL re-verification — 2026-09-13
+
+The City Rail Link opened today. Every endpoint was re-probed against the live
+API at 15:30 NZST. Fixtures are in `test/fixtures/post-crl/`.
+
+## What held
+
+- **Stop ids survived the GTFS version change.** `8213-7e021a72` and
+  `122-34ecc043` both still return 200. The hash is not per-version.
+- **`filter[stop_code]` still works** — still undocumented, still the only way
+  to resolve a stop code.
+- **Leaving the rail route unpinned worked exactly as designed.** `WEST-201`
+  stopped running at Kingsland and `E-W-201` took over, with no configuration
+  change and nothing to reflash. Both route ids still exist in `/routes`; only
+  the trips moved.
+- **The bus is untouched.** Route 20 at stop 8213 is still `20-202`,
+  `direction_id: 0`, headsign `St Lukes To Wynyard Quarter Via Kingsland`.
+
+## What broke: `direction_id` flipped
+
+This is the important one, and it would have shipped as a silent, confident
+wrong answer.
+
+| | pre-CRL (2026-09-06) | post-CRL (2026-09-13) |
+|---|---|---|
+| `direction_id: 0` | `Swanson To Brit 2` — **to the city** | `Manukau To Swanson` — away |
+| `direction_id: 1` | `Brit 2 To Swanson` — away | `Swanson To Manukau` — **to the city** |
+
+Confirmed against the trips' own stop lists rather than by reading headsigns:
+
+```
+dir 0 after Kingsland: Morningside, Baldwin Ave, Mt Albert, Avondale
+dir 1 after Kingsland: Maungawhau, Karanga-a-Hape, Te Waihorotiu, Waitemata
+```
+
+A board storing `direction_id: 0` for "to the city", as the design said to,
+would now show trains to Swanson — with no error, no stale flag, and complete
+confidence.
+
+### Why the obvious fixes don't work
+
+- **Matching the headsign text fails.** Every pre-CRL headsign changed
+  (`Brit 2` no longer exists; `Britomart` is now `Waitemata`).
+- **Matching on "Via Waitemata" fails.** CRL made the line a through-route, so
+  *both* directions now read `Via Waitemata`. Only the destination
+  distinguishes them: `To Manukau` passes through the city, `To Swanson` does
+  not.
+
+### The fix: store a destination, not a direction
+
+Store the **stop_code the user wants to travel toward** (Waitematā for "to the
+city"). At each schedule refresh, resolve which `direction_id` currently serves
+it downstream:
+
+```
+GET /gtfs/v3/trips/{trip_id}/stops
+```
+
+Returns the trip's stops **in sequence order**. Attributes are
+`stop_id, stop_code, stop_name, stop_lat, stop_lon, location_type,
+parent_station, platform_code, wheelchair_boarding` — note there is **no
+`stop_sequence` field**; order is positional, so do not sort the array.
+
+Direction is a property of `(route_id, direction_id)`, not of an individual
+trip, so this costs **one extra request per watch per schedule refresh** (every
+~15 min), cached in between. Take any candidate trip, fetch its stops, find our
+stop, and check whether the target stop_code appears after it.
+
+That encoding is durable against exactly what just happened: line renames,
+route id changes, headsign rewrites, and direction flips. It is also what the
+user actually means — "trains that will take me to Waitematā" — rather than an
+internal integer that happened to point the right way in September.
+
+### Match the parent station, not the platform
+
+A trip's stop list contains **platform-level** stops, so a naive stop_code
+comparison against a station code never matches:
+
+```
+Waitemata Train Station 1 -> stop_code 9001, parent_station 133-08da14b5
+Maungawhau Train Station 1 -> stop_code 9291, parent_station 136-2d5b76e2
+```
+
+Station 133 never appears in the list; platform 9001 does. Each entry carries
+`parent_station`, so the check is: does any downstream stop have
+`stop_code == target` **or** `parent_station == target_stop_id`. Buses have no
+parent, so the first half covers them on its own.
+
+Verified targets for this project:
+
+| | stop_code | route | toward | resolves to |
+|---|---|---|---|---|
+| Bus | 8213 | `20` | `1060` Wynyard Quarter | last stop of the trip |
+| Train | 122 | *(none)* | `133` Waitematā | parent of platform `9001` |
+
+Keep the resolved `direction_id` as a cache, never as the source of truth, and
+re-derive it whenever the schedule is refetched.
