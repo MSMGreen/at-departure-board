@@ -124,10 +124,28 @@ fails messily rather than cleanly.
 `2026-09-15 20:42 NZST isdst=0` — correct. NZDT begins 27 September 2026; the
 rule is in place and should flip on its own. Worth re-checking on the 28th.
 
+## End-to-end, verified on hardware
+
+The whole data path ran on the board on 2026-09-15 at 22:05, in one pass, with
+the sprite held throughout:
+
+```
+A. stoptrips, no de-chunking              ->  0 departures   (silent failure)
+B. stoptrips, de-chunked                  -> 11 departures
+     22:04 O-W-201 dir 0 / 22:06 O-W-201 dir 1 / 22:26 E-W-201 dir 0
+C. realtime ?tripid=, content-length      ->  4 entities
+     delays -6, +16, -52, +66 seconds
+```
+
+The runtime branch picked `chunked -> de-chunking` for GTFS and
+`content-length -> direct` for realtime within the same run, which is the
+behaviour the firmware needs. Lowest heap across the whole pass: **151,032**.
+
+Those delays are live: a train 52 s early and another 66 s late. Schedule alone
+would have been wrong by over a minute in both directions.
+
 ## Still to verify on hardware
 
-- Conditional de-chunking (`getSize() < 0`) — written and built, not yet flashed.
-  Stage 3 proved the de-chunker itself; this is the three-line branch on top.
 - TLS with certificate pinning. The spike used `setInsecure()`, which is fine for
   a measurement and **must not** become the shipped behaviour.
 - Anything involving the display: not wired yet.
