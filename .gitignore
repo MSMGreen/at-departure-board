@@ -3,3 +3,6 @@ tools/out/
 .vscode/
 __pycache__/
 secrets.h
+
+# spike build artifacts
+spike/**/.pio/
