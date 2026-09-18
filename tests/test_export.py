@@ -2,6 +2,7 @@ import pytest
 
 from tools import export_sprites as ex
 from tools.board import palette, themes
+from tools.board import scenes  # noqa: E402
 
 ALL_THEMES = themes.names()
 
@@ -96,6 +97,7 @@ def test_theme_header_warns_against_hand_editing():
 GENERATED = [
     (ex.OUT, ex.render_header),
     (ex.THEME_OUT, ex.render_theme_header),
+    (ex.SCENES_OUT, ex.render_scenes_header),
 ]
 
 
@@ -107,3 +109,21 @@ def test_generated_file_is_current(path, render):
         on_disk = fh.read()
     assert on_disk == render(), \
         f"{path} is stale - run: python tools/export_sprites.py"
+
+
+def test_scenes_header_has_every_scene_in_order():
+    h = ex.render_scenes_header()
+    positions = [h.index(f'"{name}"') for name in scenes.SCENES]
+    assert positions == sorted(positions)
+    assert f"#define SCENE_DATA_COUNT {len(scenes.SCENES)}" in h
+
+
+def test_cstr_refuses_text_the_panel_font_cannot_draw():
+    # The GLCD font has no macron. Catch it here, not as a blank on the glass.
+    with pytest.raises(ValueError):
+        ex._cstr("to Waitematā")
+
+
+def test_cstr_escapes_quotes_and_passes_none_as_null():
+    assert ex._cstr('say "hi"') == '"say \\"hi\\""'
+    assert ex._cstr(None) == "nullptr"

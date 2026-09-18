@@ -5,7 +5,8 @@ Indexed rather than RGB565 so the firmware can recolour a sprite to the
 route's own colour at draw time, and because 36x16 at 4bpp is 288 bytes
 against 1152.
 
-    python tools/export_sprites.py     # writes src/sprites.h, lib/core/src/theme_data.h
+    python tools/export_sprites.py     # writes src/sprites.h, lib/core/src/theme_data.h,
+                                        # lib/core/src/scenes_data.h
 """
 
 import os
@@ -13,7 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools.board import themes  # noqa: E402
+from tools.board import scenes, themes  # noqa: E402
 
 ROLE_INDEX = {".": 0, "B": 1, "H": 2, "S": 3, "M": 4, "W": 5,
               "G": 6, "D": 7, "K": 8, "L": 9, "A": 10}
@@ -27,6 +28,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "src", "sprites.h")
 CORE = os.path.join(ROOT, "lib", "core", "src")
 THEME_OUT = os.path.join(CORE, "theme_data.h")
+SCENES_OUT = os.path.join(CORE, "scenes_data.h")
+
+KIND_CONST = {"bus": "Kind::Bus", "train": "Kind::Train"}
+MAX_DEPARTURES = 4  # lib/core/src/model.h
 
 # Order of the C enum ColourKey in lib/core/src/theme.h.
 COLOUR_KEYS = ["bg", "panel", "panel_hi", "line", "text", "dim", "live",
@@ -147,6 +152,43 @@ def render_theme_header():
     return "\n".join(parts) + "\n"
 
 
+def _cstr(s):
+    """A C string literal, or nullptr. ASCII only: the panel font is GLCD."""
+    if s is None:
+        return "nullptr"
+    if not s.isascii():
+        raise ValueError(f"the panel font cannot draw non-ASCII text: {s!r}")
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _bool(b):
+    return "true" if b else "false"
+
+
+def render_scenes_header():
+    parts = GENERATED_BANNER + [
+        "#pragma once",
+        '#include "demo.h"',
+        "",
+        "// tools/board/scenes.py, in order. DEMO_MODE plays these.",
+        "static const Scene SCENE_DATA[] = {",
+    ]
+    for name, board in scenes.SCENES.items():
+        parts.append(f"    {{{_cstr(name)}, {_cstr(board.clock)}, {board.stale_s}, "
+                     f"{_bool(board.dimmed)}, {len(board.watches)}, {{")
+        for w in board.watches:
+            if len(w.departures) > MAX_DEPARTURES:
+                raise ValueError(f"scene {name!r}: more than {MAX_DEPARTURES} departures")
+            deps = ", ".join(f"{{{d.eta_s}, {_bool(d.live)}, {_bool(d.cancelled)}}}"
+                             for d in w.departures)
+            parts.append(f"        {{{_cstr(w.badge)}, {_cstr(w.headsign)}, "
+                         f"{KIND_CONST[w.kind]}, {_cstr(w.route_color)}, "
+                         f"{len(w.departures)}, {{{deps}}}}},")
+        parts.append("    }},")
+    parts += ["};", f"#define SCENE_DATA_COUNT {len(scenes.SCENES)}"]
+    return "\n".join(parts) + "\n"
+
+
 def _write(path, text):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
@@ -157,6 +199,7 @@ def _write(path, text):
 def main():
     _write(OUT, render_header())
     _write(THEME_OUT, render_theme_header())
+    _write(SCENES_OUT, render_scenes_header())
 
 
 if __name__ == "__main__":
