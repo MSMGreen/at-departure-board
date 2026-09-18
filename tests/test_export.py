@@ -69,3 +69,41 @@ def test_header_has_an_include_guard():
 
 def test_header_warns_against_hand_editing():
     assert "generated" in ex.render_header().lower()
+
+
+def test_every_theme_defines_exactly_the_exported_colour_keys():
+    for name in ALL_THEMES:
+        assert set(themes.get(name).colours) == set(ex.COLOUR_KEYS), name
+
+
+def test_theme_header_pins_the_colour_enum_order():
+    # The C enum is hand-written; these asserts make a mismatch a compile error.
+    h = ex.render_theme_header()
+    for i, key in enumerate(ex.COLOUR_KEYS):
+        assert f"static_assert(C_{key.upper()} == {i}," in h
+
+
+def test_theme_header_lists_themes_in_sprite_header_order():
+    h = ex.render_theme_header()
+    positions = [h.index(f'"{name}"') for name in ALL_THEMES]
+    assert positions == sorted(positions)
+
+
+def test_theme_header_warns_against_hand_editing():
+    assert "generated" in ex.render_theme_header().lower()
+
+
+GENERATED = [
+    (ex.OUT, ex.render_header),
+    (ex.THEME_OUT, ex.render_theme_header),
+]
+
+
+@pytest.mark.parametrize("path,render", GENERATED,
+                         ids=[p for p, _ in GENERATED])
+def test_generated_file_is_current(path, render):
+    # Text mode: git may have checked the file out with CRLF.
+    with open(path, encoding="utf-8") as fh:
+        on_disk = fh.read()
+    assert on_disk == render(), \
+        f"{path} is stale - run: python tools/export_sprites.py"
