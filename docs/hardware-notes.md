@@ -25,11 +25,9 @@ flash without letting esptool reset it.
 
 1. Hold **BOOT**, press and release **EN**, then release **BOOT**. The chip now
    sits in the bootloader; the screen does not change.
-2. Flash with `--before no_reset` at **115200** baud:
-
-```
-python -m esptool --chip esp32 --port COM8 --baud 115200   --before no_reset --after hard_reset write_flash -z   0x1000 .pio/build/<env>/bootloader.bin 0x8000 .pio/build/<env>/partitions.bin   0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin   0x10000 .pio/build/<env>/firmware.bin
-```
+2. `pio run -e esp32 -t upload`. `platformio.ini` sets
+   `board_upload.before_reset = no_reset` and `upload_speed = 115200`, so
+   esptool neither tries the broken auto-reset nor drops the link.
 
 `--after hard_reset` via RTS *does* work, so the new firmware starts on its own.
 
