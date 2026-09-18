@@ -65,7 +65,8 @@ parametrically, then regenerate.
 
 ## Hardware
 
-ESP32 dev board (WROOM-32) and a 2.8" 320x240 ILI9341 SPI panel, no touch.
+ESP32 dev board (WROOM-32) and a 2.8" 320x240 ST7789 SPI panel, no touch (sold as
+ILI9341 — see `docs/hardware-notes.md`).
 
 | Display | ESP32 |
 |---|---|

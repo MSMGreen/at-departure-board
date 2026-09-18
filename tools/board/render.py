@@ -1,7 +1,7 @@
 """Compose model + layout + sprites into the 320x240 frame.
 
 Mirrors what the firmware does per lane, so what you see here is what the
-ILI9341 shows.
+panel shows.
 """
 
 import math

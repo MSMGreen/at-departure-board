@@ -20,10 +20,23 @@ Auto-reset into the bootloader does not work on this board: esptool resets the
 chip but GPIO0 is not pulled low, so it boots the app and esptool reports
 `Wrong boot mode detected (0x13)`.
 
-Every upload therefore needs: hold **BOOT**, tap **EN**, keep holding BOOT until
-`Writing at...` appears, then **release BOOT**. Releasing matters — holding it
-through the post-flash reset leaves the chip sitting in the bootloader printing
-`waiting for download`.
+What works reliably (2026-09-19): put the chip into download mode *first*, then
+flash without letting esptool reset it.
+
+1. Hold **BOOT**, press and release **EN**, then release **BOOT**. The chip now
+   sits in the bootloader; the screen does not change.
+2. Flash with `--before no_reset` at **115200** baud:
+
+```
+python -m esptool --chip esp32 --port COM8 --baud 115200   --before no_reset --after hard_reset write_flash -z   0x1000 .pio/build/<env>/bootloader.bin 0x8000 .pio/build/<env>/partitions.bin   0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin   0x10000 .pio/build/<env>/firmware.bin
+```
+
+`--after hard_reset` via RTS *does* work, so the new firmware starts on its own.
+
+Two ways it fails: `pio run -t upload` gives up after ~11 s, before a human can
+do the buttons; and at **460800** baud the CH340 link drops right after the
+baud switch (`No more data to read from the serial port`). Releasing BOOT
+before EN also misses download mode (`No serial data received`).
 
 Permanent fix if it becomes tiresome: a 1 µF capacitor between EN and GND.
 
@@ -52,6 +65,44 @@ needs **153,600 bytes contiguous** and therefore *cannot* be allocated at all.
 
 The design's 320x56 per-lane sprite (35,840 bytes) was the only approach that
 was ever going to work. Do not "optimise" it into a full framebuffer later.
+
+## The display is an ST7789, not an ILI9341
+
+The module is the common red "2.8\" TFT 240xRGBx320 V1.1" SPI board with an SD
+slot and a touch footprint (touch unpopulated). It is sold as ILI9341, and the
+design doc assumed that. The unit on hand has an **ST7789** controller. Found
+by bring-up spike `spike/display/`, 2026-09-19.
+
+Wiring is exactly as in design doc §2, and it is right: nothing had to change.
+
+TFT_eSPI configuration that works (build flags, no `User_Setup.h` edit):
+
+```
+-DUSER_SETUP_LOADED=1
+-DST7789_DRIVER=1
+-DTFT_RGB_ORDER=TFT_BGR
+-DTFT_INVERSION_OFF=1
+-DTFT_WIDTH=240  -DTFT_HEIGHT=320
+-DTFT_MISO=19 -DTFT_MOSI=23 -DTFT_SCLK=18 -DTFT_CS=15 -DTFT_DC=2 -DTFT_RST=4
+-DSPI_FREQUENCY=27000000
+```
+
+`setRotation(1)` and `(3)` give a clean 320x240 landscape; all four rotations
+fill the glass edge to edge. The backlight on GPIO32 is driven HIGH by the app.
+
+How each wrong setting looks, so it can be recognised again:
+
+| Setting | Symptom |
+|---|---|
+| `ILI9341_DRIVER` | Landscape drawn un-rotated into 240 columns; the other 80 are static. Other rotations cut up / off-centre. Red and blue swapped. |
+| ST7789, default inversion (ON) | Whole image a photo negative: black background shows white. |
+| ST7789, default colour order (RGB) | Red and blue swapped. |
+| Both defaults together | Red→yellow, green→magenta, blue→cyan, yellow→red. Looks random; it's inversion plus swap. |
+
+The panel **does not answer reads**: RDDID (`0xD3`) returns `00 00 00` and
+RDDST returns constant garbage. So the controller can't be detected in software;
+identify it by rendering, as above. Don't build anything that depends on
+reading back from the panel.
 
 ## Flash is the tighter constraint
 
@@ -148,4 +199,5 @@ would have been wrong by over a minute in both directions.
 
 - TLS with certificate pinning. The spike used `setInsecure()`, which is fine for
   a measurement and **must not** become the shipped behaviour.
-- Anything involving the display: not wired yet.
+- The display under real load: sprite pushes per lane, PWM dimming on GPIO32,
+  and whether 27 MHz SPI holds up alongside WiFi. Basic bring-up is done (above).

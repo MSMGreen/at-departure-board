@@ -38,7 +38,8 @@ No touch input (the panel is not a touch panel), no OTA updates, no enclosure
 ## 2. Hardware
 
 - ESP32 dev board (WROOM-32), USB powered, always on.
-- 2.8" 320x240 ILI9341 SPI panel, no touch.
+- 2.8" 320x240 SPI panel, no touch. Sold as ILI9341, but the unit on hand is
+  an **ST7789** (see `docs/hardware-notes.md`, "The display").
 
 | Display | ESP32 | Note |
 |---|---|---|
