@@ -300,3 +300,55 @@ Verified targets for this project:
 
 Keep the resolved `direction_id` as a cache, never as the source of truth, and
 re-derive it whenever the schedule is refetched.
+
+---
+
+# One station, two lines: direction is per route
+
+Discovered while building the firmware data-path plan, against the live API on
+2026-09-19. Kingsland is served by **two** rail lines, not one:
+
+| route_id | via | reaches Waitematā? |
+|---|---|---|
+| `E-W-201` (Swanson↔Manukau) | Waitematā | yes |
+| `O-W-201` (Henderson↔Onehunga) | Newmarket: Kingsland → Maungawhau → Grafton → Newmarket → … → Onehunga | no |
+
+Only `E-W-201` reaches Waitematā. Taking **one candidate trip per
+`direction_id`** (as §3a originally read) can pick an `O-W-201` trip for both
+directions, and on 2026-09-19 it did — checking only those two trips against
+`toward_stop_code=133` found nothing and wrongly concluded that no direction at
+Kingsland serves Waitematā.
+
+The spec's own §3a sentence already said the right thing: "Direction is a
+property of `(route_id, direction_id)`, not of an individual trip." The bug was
+in not deriving it per route. Every `(route_id, direction_id)` pair actually
+running at the stop must be checked, not just one trip per `direction_id`.
+
+On hardware the board now logs, for stop 122:
+
+```
+dirs 122: O-W-201/0 no  O-W-201/1 no  E-W-201/0 no  E-W-201/1 yes -> ok
+```
+
+## Realtime only reports trips already in progress
+
+Asking `/realtime/legacy/tripupdates?tripid=...` about trips that haven't
+started yet returns **fewer entities than ids requested** — the trip simply
+isn't in the feed until it's under way. That's normal, not an error; the client
+should not treat a short entity list as a fetch failure.
+
+## Post-CRL fixtures (2026-09-19)
+
+Re-verified against the live API on 2026-09-19, with new fixtures in
+`test/fixtures/post-crl/`:
+
+- `filter[start_hour]=0` is rejected: 400 `Invalid Request` ("Field validation
+  for 'StartHour'"). The valid range is **1..23** — a 00:00–00:59 departure
+  cannot be fetched with `start_hour=0`.
+- An unknown stop code returns **200** `{"data":[]}`, not 404.
+- A bad subscription key returns **401** with a `statusCode`/`message` body.
+- `stops?filter[stop_code]` still resolves 8213/122/133/1060 to the same ids as
+  on 13 September — the hashes are unchanged.
+
+New fixtures, captured 2026-09-19: `test/fixtures/post-crl/stops_8213.json`,
+`stops_122.json`, `stops_133.json`, `stops_1060.json`, `stops_unknown.json`.

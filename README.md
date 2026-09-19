@@ -8,8 +8,10 @@ time to arrival — it enters at the left twenty minutes out and pulls into the
 stop as the countdown reaches zero. The point is that you can read it from
 across a room without resolving any digits.
 
-Status: display layer complete; firmware draws the board on the panel in
-`DEMO_MODE` (synthetic departures). Live data next.
+Status: live data. The board fetches real AT departures and realtime delays
+over WiFi/TLS and draws the board from them, holding 15 fps with the network
+running. `DEMO_MODE` (synthetic departures, no network) still builds and is
+useful for a no-key bring-up.
 
 ## Try it without hardware
 
@@ -40,6 +42,26 @@ pio run -e esp32 -t upload  # first: hold BOOT, tap EN, release BOOT
 
 This build runs `DEMO_MODE`: every canonical state from the simulator, played
 in real time on the panel, no WiFi or API key needed.
+
+## Point it at your own stops
+
+There's no setup portal yet (spec §3 — coming later), so for now this is two
+files:
+
+1. Copy `src/secrets.example.h` to `src/secrets.h` and fill in your WiFi
+   credentials and AT API key. `src/secrets.h` is gitignored — **never commit
+   it.**
+2. Edit `src/watch_config.h`: stop codes are the numbers on the pole, and
+   `toward_stop_code` is the stop you're travelling toward, not a direction
+   (direction is derived at every refresh — see `docs/at-api-notes.md`).
+
+The bus watch here pins route `20` on purpose: stop 8213 is also served by
+`22R`/`22N`, which the owner doesn't take, and AT's own app lists every route
+that stops there. A stop served only by routes you'd actually board can leave
+`route_short_name` empty, as the train watch does.
+
+For a no-network demo of the same board, `pio run -e esp32_demo -t upload`
+builds with `DEMO_MODE` instead, no `secrets.h` or API key required.
 
 ## Development
 
