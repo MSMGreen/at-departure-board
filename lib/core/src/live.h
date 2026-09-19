@@ -67,6 +67,35 @@ int select_rows(const StopTripRow rows[], int n, int direction,
                 const char* const route_ids[], int n_routes, int64_t now,
                 LiveRow out[], int cap);
 
+constexpr int MAX_ROUTE_DIRS = 6;  // a stop served by more routes than this
+                                   // keeps the first six pairs it sees
+
+// One (route_id, direction_id) combination seen in the window, with a trip to
+// ask about and whether that trip reaches the target.
+struct RouteDir {
+  char route_id[ROUTE_ID_LEN];
+  int8_t direction_id;
+  char trip_id[TRIP_ID_LEN];  // representative trip, for trips/{id}/stops
+  char stop_id[STOP_ID_LEN];  // our stop as that trip calls it (the platform)
+  bool serves;                // filled in by the caller after fetching stops
+};
+
+// Distinct (route_id, direction_id) pairs in the rows, in first-seen order,
+// each with the first trip seen for that pair. Direction is a property of the
+// pair, not of a trip: at a station served by two lines, one line can reach
+// the target and the other not (spec 3a).
+int collect_route_dirs(const StopTripRow rows[], int n, RouteDir out[], int cap);
+
+// Rows belonging to a pair whose `serves` is true, filtered by route as before,
+// scheduled recently enough to still matter, sorted by scheduled time.
+int select_serving_rows(const StopTripRow rows[], int n, const RouteDir pairs[],
+                        int n_pairs, const char* const route_ids[], int n_routes,
+                        int64_t now, LiveRow out[], int cap);
+
+// Ok when at least one pair serves; CheckConfig when none does AND some route
+// had both directions present; otherwise Ok with nothing to show.
+WatchState verdict_for_pairs(const RouteDir pairs[], int n_pairs);
+
 // Applies delays and cancellations to rows whose trip_id we asked for; entities
 // for any other trip are discarded (the tripid filter is inexact). A row we DID
 // ask about and heard nothing back for has its realtime cleared: an old delay

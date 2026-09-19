@@ -14,6 +14,35 @@ struct Candidate {
   bool cancelled;
 };
 
+// Shared by select_rows and select_serving_rows: the two differ only in which
+// rows they admit, never in the keep-recent window, the copy or the sort.
+bool route_passes(const char* route_id, const char* const route_ids[], int n_routes) {
+  if (n_routes <= 0) return true;  // an unpinned watch takes whatever runs
+  for (int k = 0; k < n_routes; k++) {
+    if (strcmp(route_id, route_ids[k]) == 0) return true;
+  }
+  return false;
+}
+
+void emit_row(const StopTripRow& r, int64_t sched, LiveRow& o) {
+  memset(&o, 0, sizeof o);
+  strncpy(o.trip_id, r.trip_id, sizeof o.trip_id - 1);
+  strncpy(o.stop_id, r.stop_id, sizeof o.stop_id - 1);
+  o.sched_epoch = sched;
+}
+
+void sort_rows_by_schedule(LiveRow out[], int count) {
+  for (int i = 1; i < count; i++) {  // by scheduled time, stable
+    const LiveRow v = out[i];
+    int j = i - 1;
+    while (j >= 0 && out[j].sched_epoch > v.sched_epoch) {
+      out[j + 1] = out[j];
+      j--;
+    }
+    out[j + 1] = v;
+  }
+}
+
 void sort_candidates(Candidate c[], int n) {
   for (int i = 1; i < n; i++) {  // insertion sort: stable, n is tiny
     const Candidate v = c[i];
@@ -76,35 +105,81 @@ int select_rows(const StopTripRow rows[], int n, int direction,
   for (int i = 0; i < n && count < cap; i++) {
     const StopTripRow& r = rows[i];
     if (r.direction_id != direction) continue;
-    if (n_routes > 0) {
-      bool wanted = false;
-      for (int k = 0; k < n_routes; k++) {
-        if (strcmp(r.route_id, route_ids[k]) == 0) {
-          wanted = true;
-          break;
-        }
-      }
-      if (!wanted) continue;
-    }
+    if (!route_passes(r.route_id, route_ids, n_routes)) continue;
     const int64_t sched = gtfs_epoch(r.service_date, r.departure_s);
     if (sched < now - KEEP_PAST_S) continue;
-    LiveRow& o = out[count];
-    memset(&o, 0, sizeof o);
-    strncpy(o.trip_id, r.trip_id, sizeof o.trip_id - 1);
-    strncpy(o.stop_id, r.stop_id, sizeof o.stop_id - 1);
-    o.sched_epoch = sched;
+    emit_row(r, sched, out[count]);
     count++;
   }
-  for (int i = 1; i < count; i++) {  // by scheduled time, stable
-    const LiveRow v = out[i];
-    int j = i - 1;
-    while (j >= 0 && out[j].sched_epoch > v.sched_epoch) {
-      out[j + 1] = out[j];
-      j--;
+  sort_rows_by_schedule(out, count);
+  return count;
+}
+
+int collect_route_dirs(const StopTripRow rows[], int n, RouteDir out[], int cap) {
+  int count = 0;
+  for (int i = 0; i < n; i++) {
+    const StopTripRow& r = rows[i];
+    if (r.direction_id < 0 || r.direction_id > 1) continue;
+    bool seen = false;
+    for (int p = 0; p < count; p++) {
+      if (out[p].direction_id == r.direction_id && strcmp(out[p].route_id, r.route_id) == 0) {
+        seen = true;
+        break;
+      }
     }
-    out[j + 1] = v;
+    if (seen) continue;  // the pair already has its representative trip
+    if (count >= cap) break;
+    RouteDir& o = out[count];
+    memset(&o, 0, sizeof o);
+    strncpy(o.route_id, r.route_id, sizeof o.route_id - 1);
+    o.direction_id = r.direction_id;
+    strncpy(o.trip_id, r.trip_id, sizeof o.trip_id - 1);
+    strncpy(o.stop_id, r.stop_id, sizeof o.stop_id - 1);
+    o.serves = false;
+    count++;
   }
   return count;
+}
+
+int select_serving_rows(const StopTripRow rows[], int n, const RouteDir pairs[], int n_pairs,
+                        const char* const route_ids[], int n_routes, int64_t now, LiveRow out[],
+                        int cap) {
+  int count = 0;
+  for (int i = 0; i < n && count < cap; i++) {
+    const StopTripRow& r = rows[i];
+    bool serving = false;
+    for (int p = 0; p < n_pairs; p++) {
+      if (!pairs[p].serves) continue;
+      if (pairs[p].direction_id != r.direction_id) continue;
+      if (strcmp(pairs[p].route_id, r.route_id) != 0) continue;
+      serving = true;
+      break;
+    }
+    if (!serving) continue;
+    if (!route_passes(r.route_id, route_ids, n_routes)) continue;
+    const int64_t sched = gtfs_epoch(r.service_date, r.departure_s);
+    if (sched < now - KEEP_PAST_S) continue;
+    emit_row(r, sched, out[count]);
+    count++;
+  }
+  sort_rows_by_schedule(out, count);
+  return count;
+}
+
+WatchState verdict_for_pairs(const RouteDir pairs[], int n_pairs) {
+  for (int p = 0; p < n_pairs; p++) {
+    if (pairs[p].serves) return WatchState::Ok;
+  }
+  // Nothing reaches the target. Only a route running BOTH ways past this stop,
+  // neither way reaching it, proves the target is wrong for this stop; one
+  // direction of one line simply means nothing is due your way right now.
+  for (int a = 0; a < n_pairs; a++) {
+    for (int b = a + 1; b < n_pairs; b++) {
+      if (pairs[a].direction_id == pairs[b].direction_id) continue;
+      if (strcmp(pairs[a].route_id, pairs[b].route_id) == 0) return WatchState::CheckConfig;
+    }
+  }
+  return WatchState::Ok;
 }
 
 void apply_realtime(LiveWatch& w, const RtEntity ents[], int n,

@@ -63,7 +63,6 @@ struct Resolved {
   char target_stop_id[STOP_ID_LEN];
   char route_ids[MAX_PINNED][ROUTE_ID_LEN];
   int n_routes;
-  int direction;  // the cached derived direction, -1 until one is proven
   bool resolved;
   int64_t next_try;    // resolution is rate limited; see RESOLVE_RETRY_S
   int64_t next_sched;  // when this watch's schedule is next due
@@ -77,6 +76,10 @@ bool g_rail_loaded = false;
 
 RouteInfo g_routes[8];  // the answer to one filter[route_short_name]
 StopTripRow g_rows[MAX_SCHED_ROWS];
+// The (route, direction) pairs of the watch being refreshed. Shared across
+// watches like g_rows: they are only read inside the refresh that fills them.
+RouteDir g_pairs[MAX_ROUTE_DIRS];
+char g_log[200];  // the "dirs" line: six pairs of up to ~26 characters
 TripStop g_stops[MAX_TRIP_STOPS];
 RtEntity g_ents[MAX_ENTITIES];
 const char* g_ids[MAX_RT_IDS];  // pointers into g_work's own rows
@@ -325,65 +328,88 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
     n += parse_stoptrips(g_doc, g_rows + n, MAX_SCHED_ROWS - n);
   }
 
-  // Direction is derived every refresh, never stored (spec 3a): one candidate
-  // trip per direction_id that survives the route filter, then its stop list.
-  bool present[2] = {false, false};
-  int cand[2] = {-1, -1};
-  for (int k = 0; k < n; k++) {
-    const int d = g_rows[k].direction_id;
-    if (d < 0 || d > 1 || present[d]) continue;
-    if (!route_wanted(r, g_rows[k].route_id)) continue;
-    present[d] = true;
-    cand[d] = k;
+  // Direction is derived every refresh and is a property of
+  // (route_id, direction_id), never of a trip (spec 3a). Kingsland proved why:
+  // it is served by E-W, which reaches Waitemata, and O-W, which runs to
+  // Onehunga via Newmarket. One candidate trip per direction_id asked about
+  // O-W both ways and concluded the target was unreachable, while the trains
+  // the board wanted were due. So probe every pair in the window.
+  int n_pairs = collect_route_dirs(g_rows, n, g_pairs, MAX_ROUTE_DIRS);
+  if (r.n_routes > 0) {
+    // A pinned watch has no business spending requests on, or being judged by,
+    // routes it will never show.
+    int keep = 0;
+    for (int p = 0; p < n_pairs; p++) {
+      if (!route_wanted(r, g_pairs[p].route_id)) continue;
+      if (keep != p) g_pairs[keep] = g_pairs[p];
+      keep++;
+    }
+    n_pairs = keep;
   }
 
-  bool serves[2] = {false, false};
-  for (int d = 0; d < 2; d++) {
-    if (!present[d]) continue;
-    const StopTripRow& row = g_rows[cand[d]];
-    if (!url_trip_stops(g_url, sizeof g_url, row.trip_id)) return false;
+  int probed = 0, failed = 0;
+  for (int p = 0; p < n_pairs; p++) {
+    RouteDir& pair = g_pairs[p];
+    pair.serves = false;
+    if (!url_trip_stops(g_url, sizeof g_url, pair.trip_id)) {
+      failed++;
+      continue;
+    }
     const int status = get(trip_stops_filter);
     if (status == 401) {
       set_all(WatchState::CheckKey, now);
       return false;
     }
-    // A direction that could not be proven must not be guessed at, and a 5xx
-    // is not proof of anything: keep the cached rows and come back.
-    if (status != 200) return false;
+    if (status != 200) {
+      failed++;  // serves stays false, and that is not proof of anything
+      continue;
+    }
     const int n_stops = parse_trip_stops(g_doc, g_stops, MAX_TRIP_STOPS);
-    // Our stop here is the row's own stop_id: a station's rows carry the
+    // Our stop here is the pair's own stop_id: a station's rows carry the
     // platform, and a trip's stop list contains platforms, not stations.
-    serves[d] = trip_serves(g_stops, n_stops, row.stop_id, cfg.toward_stop_code, r.target_stop_id);
+    pair.serves =
+        trip_serves(g_stops, n_stops, pair.stop_id, cfg.toward_stop_code, r.target_stop_id);
+    probed++;
+  }
+  // Every probe failed: we know nothing this pass. Leave the watch's previous
+  // state and rows exactly as they were.
+  if (n_pairs > 0 && probed == 0) return false;
+
+  WatchState verdict = verdict_for_pairs(g_pairs, n_pairs);
+  if (verdict == WatchState::CheckConfig && failed > 0) {
+    // Incomplete evidence is not proof of a misconfiguration: the pair that
+    // failed to fetch may be the one that reaches the target.
+    verdict = WatchState::Ok;
   }
 
-  const int dir = choose_direction(present, serves);
-  int use = dir;
-  if (dir == DIR_NONE) use = r.direction;  // nothing our way now; keep the cache
-
-  if (dir == DIR_UNPROVABLE) {
-    // Both directions run and neither reaches the target. A watch that cannot
-    // prove which way it points must not display a time (spec 3a).
-    w.state = WatchState::CheckConfig;
-    w.n_rows = 0;
-  } else if (use < 0) {
-    w.state = WatchState::Ok;  // an empty board is the honest answer
+  if (verdict != WatchState::Ok) {
+    // A service runs both ways past this stop and neither way gets you there.
+    // A watch that cannot prove which way it points must not show a time.
+    w.state = verdict;
     w.n_rows = 0;
   } else {
-    r.direction = use;
     const char* rids[MAX_PINNED] = {r.route_ids[0], r.route_ids[1]};
-    w.n_rows = static_cast<uint8_t>(
-        select_rows(g_rows, n, use, rids, r.n_routes, now, w.rows, MAX_ROWS));
+    w.n_rows = static_cast<uint8_t>(select_serving_rows(g_rows, n, g_pairs, n_pairs, rids,
+                                                       r.n_routes, now, w.rows, MAX_ROWS));
     if (w.n_rows > 0) {
       const char* rid = route_of(w.rows[0].trip_id, n);
       if (rid != nullptr) style_from_route(w, rid);
     }
-    w.state = WatchState::Ok;
+    w.state = WatchState::Ok;  // no rows is an empty board, not an error
   }
 
   r.next_sched = now + SCHEDULE_PERIOD_S;
-  Serial.printf("sched %s: parsed %d dir %d (present %d%d serves %d%d) -> %u rows\n", cfg.stop_code,
-                n, dir, present[0] ? 1 : 0, present[1] ? 1 : 0, serves[0] ? 1 : 0,
-                serves[1] ? 1 : 0, static_cast<unsigned>(w.n_rows));
+  int p = 0;
+  for (int k = 0; k < n_pairs && p < static_cast<int>(sizeof g_log) - 1; k++) {
+    p += snprintf(g_log + p, sizeof g_log - p, "%s%s/%d %s", k == 0 ? "" : "  ",
+                  g_pairs[k].route_id, static_cast<int>(g_pairs[k].direction_id),
+                  g_pairs[k].serves ? "yes" : "no");
+  }
+  if (p == 0) snprintf(g_log, sizeof g_log, "none");
+  const char* m = state_message(w.state);
+  Serial.printf("dirs %s: %s -> %s\n", cfg.stop_code, g_log, m[0] != '\0' ? m : "ok");
+  Serial.printf("sched %s: parsed %d pairs %d probed %d failed %d -> %u rows\n", cfg.stop_code, n,
+                n_pairs, probed, failed, static_cast<unsigned>(w.n_rows));
   return true;
 }
 
@@ -393,8 +419,14 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
 void refresh_realtime(int64_t now) {
   const int n = realtime_ids(g_work, now, g_ids, MAX_RT_IDS, RT_PER_WATCH);
   if (n == 0) return;  // nothing upcoming to ask about; not a failure
-  if (!url_realtime(g_url, sizeof g_url, g_ids, n)) return;
+  if (!url_realtime(g_url, sizeof g_url, g_ids, n)) {
+    Serial.printf("rt: url did not fit (ids %d)\n", n);
+    return;
+  }
 
+  // Diagnostic (task 7a): on hardware this asked 6 ids and parsed 0 entities
+  // while the same query from a laptop returned 6. Print exactly what was sent.
+  Serial.printf("rt: ids %d url %.200s\n", n, g_url);
   const int status = get(realtime_filter);
   if (status == 401) {
     set_all(WatchState::CheckKey, now);
@@ -574,7 +606,6 @@ void fetcher_begin() {
     g_work.watches[i].state = WatchState::Starting;
     g_work.watches[i].kind = Kind::Bus;
     memset(&g_res[i], 0, sizeof g_res[i]);
-    g_res[i].direction = -1;
     g_logged[i] = WatchState::Starting;
   }
   publish();  // the render loop has something honest to draw immediately

@@ -64,6 +64,64 @@ void test_a_trip_that_never_calls_at_our_stop_serves_nothing() {
   TEST_ASSERT_FALSE(trip_serves(stops, 2, "8213-7e021a72", "1060", "1060-00b64ee7"));
 }
 
+void test_route_dirs_are_collected_per_route_and_direction() {
+  // Kingsland in one window: two lines, both directions of each.
+  const StopTripRow rows[] = {
+      row("ew0", "E-W-201", 0, 15 * 3600),
+      row("ow0", "O-W-201", 0, 15 * 3600 + 60),
+      row("ew1", "E-W-201", 1, 15 * 3600 + 120),
+      row("ow1", "O-W-201", 1, 15 * 3600 + 180),
+      row("ew0b", "E-W-201", 0, 15 * 3600 + 240),  // same pair again
+  };
+  RouteDir pairs[MAX_ROUTE_DIRS];
+  TEST_ASSERT_EQUAL_INT(4, collect_route_dirs(rows, 5, pairs, MAX_ROUTE_DIRS));
+  TEST_ASSERT_EQUAL_STRING("E-W-201", pairs[0].route_id);
+  TEST_ASSERT_EQUAL_INT(0, pairs[0].direction_id);
+  TEST_ASSERT_EQUAL_STRING("ew0", pairs[0].trip_id);  // first trip of that pair
+  TEST_ASSERT_EQUAL_STRING("O-W-201", pairs[1].route_id);
+  TEST_ASSERT_EQUAL_STRING("ew1", pairs[2].trip_id);
+}
+
+void test_only_the_serving_line_is_shown() {
+  // The bug: O-W does not reach Waitemata, E-W does. Rows of the line that
+  // does not go your way must never appear.
+  const StopTripRow rows[] = {
+      row("ow1", "O-W-201", 1, 15 * 3600 + 60),
+      row("ew1", "E-W-201", 1, 15 * 3600 + 120),
+  };
+  RouteDir pairs[MAX_ROUTE_DIRS];
+  const int n = collect_route_dirs(rows, 2, pairs, MAX_ROUTE_DIRS);
+  for (int i = 0; i < n; i++) pairs[i].serves = strcmp(pairs[i].route_id, "E-W-201") == 0;
+
+  LiveRow out[8];
+  TEST_ASSERT_EQUAL_INT(1, select_serving_rows(rows, 2, pairs, n, nullptr, 0, T_15_00, out, 8));
+  TEST_ASSERT_EQUAL_STRING("ew1", out[0].trip_id);
+}
+
+void test_verdict_is_check_config_only_when_a_route_runs_both_ways_in_vain() {
+  RouteDir pairs[MAX_ROUTE_DIRS]{};
+  // One line, both directions, neither reaches the target: the target is wrong
+  // for this stop.
+  strncpy(pairs[0].route_id, "O-W-201", sizeof pairs[0].route_id - 1);
+  pairs[0].direction_id = 0;
+  strncpy(pairs[1].route_id, "O-W-201", sizeof pairs[1].route_id - 1);
+  pairs[1].direction_id = 1;
+  TEST_ASSERT_TRUE(verdict_for_pairs(pairs, 2) == WatchState::CheckConfig);
+
+  // One line, one direction, not reaching it: nothing is due your way, which is
+  // an empty board rather than a misconfiguration.
+  TEST_ASSERT_TRUE(verdict_for_pairs(pairs, 1) == WatchState::Ok);
+
+  // Anything serving at all is Ok.
+  pairs[1].serves = true;
+  TEST_ASSERT_TRUE(verdict_for_pairs(pairs, 2) == WatchState::Ok);
+}
+
+void test_no_pairs_at_all_is_an_empty_board() {
+  RouteDir pairs[MAX_ROUTE_DIRS]{};
+  TEST_ASSERT_TRUE(verdict_for_pairs(pairs, 0) == WatchState::Ok);
+}
+
 void test_choose_direction() {
   const bool both[2] = {true, true};
   const bool one_serves[2] = {false, true};
@@ -370,6 +428,10 @@ int main(int, char**) {
   RUN_TEST(test_a_trip_going_the_other_way_does_not_serve_it);
   RUN_TEST(test_a_bus_target_matches_on_stop_code_alone);
   RUN_TEST(test_a_trip_that_never_calls_at_our_stop_serves_nothing);
+  RUN_TEST(test_route_dirs_are_collected_per_route_and_direction);
+  RUN_TEST(test_only_the_serving_line_is_shown);
+  RUN_TEST(test_verdict_is_check_config_only_when_a_route_runs_both_ways_in_vain);
+  RUN_TEST(test_no_pairs_at_all_is_an_empty_board);
   RUN_TEST(test_choose_direction);
   RUN_TEST(test_select_rows_filters_by_direction_and_route);
   RUN_TEST(test_select_rows_keeps_recent_departures_because_delays_can_be_large);
