@@ -11,6 +11,7 @@
 
 #include "at_api.h"
 #include "at_client.h"
+#include "freshness.h"
 #include "secrets.h"
 #include "watch_config.h"
 
@@ -28,9 +29,8 @@ namespace {
 static_assert(N_WATCHES <= MAX_WATCHES, "watch_config declares more watches than a Snapshot holds");
 
 // --- cadences (spec 5) ------------------------------------------------------
-constexpr int32_t SCHEDULE_PERIOD_S = 15 * 60;
-constexpr int32_t RT_FAST_S = 30;
-constexpr int32_t RT_SLOW_S = 120;
+// SCHEDULE_PERIOD_S, RT_FAST_S and RT_SLOW_S live in freshness.h, next to the
+// rule that decides which of them is published.
 constexpr int32_t RT_FAST_WITHIN_S = 30 * 60;
 constexpr int32_t BACKOFF_CAP_S = 300;
 constexpr int32_t NO_LINK_RETRY_S = 5;   // no WiFi or no clock yet
@@ -98,16 +98,18 @@ int32_t g_backoff = 0;  // 0 when not backing off
 bool g_time_started = false;
 WatchState g_logged[MAX_WATCHES];
 
-// Folded over every request in a pass, to decide backoff and last_ok once.
+// Folded over every request in a pass, to decide backoff once.
 struct Pass {
-  // Set only by a conclusive schedule refresh or a realtime 200. A resolve or a
-  // rail lookup that happens to 200 is not news about departures, and an
-  // inconclusive refresh is not evidence of anything: counting either would let
-  // a board drain while it still looked fresh.
-  bool news;
   bool backoff;
 };
 Pass g_pass;
+
+// News and failures, in the order they happen. News is only a conclusive
+// schedule refresh or a realtime 200: a resolve or a rail lookup that happens
+// to 200 is not news about departures, and an inconclusive refresh is not
+// evidence of anything - counting either would let a board drain while it
+// still looked fresh. A failure is any answer but 200 or 404, or no link.
+Freshness g_fresh;
 
 // --- plumbing ---------------------------------------------------------------
 
@@ -130,6 +132,7 @@ int get(void (*make_filter)(JsonDocument&)) {
   make_filter(g_filter);
   const int status = at_get(g_url, g_doc, g_filter);
   if (should_backoff(status)) g_pass.backoff = true;
+  if (status != 200 && status != 404) freshness_failure(g_fresh);
   return status;
 }
 
@@ -467,7 +470,7 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
   }
 
   r.next_sched = now + SCHEDULE_PERIOD_S;
-  g_pass.news = true;
+  freshness_news(g_fresh, now);
   const char* m = state_message(w.state);
   log_pairs(cfg.stop_code, n_pairs, m[0] != '\0' ? m : "ok");
   Serial.printf("sched %s: parsed %d pairs %d probed %d failed %d -> %u rows\n", cfg.stop_code, n,
@@ -502,7 +505,7 @@ void refresh_realtime(int64_t now) {
   for (int i = 0; i < g_work.n_watches; i++) {
     apply_realtime(g_work.watches[i], g_ents, n_ents, g_ids, n);
   }
-  g_pass.news = true;  // folded into last_ok once, at the end of the pass
+  freshness_news(g_fresh, now);
 
   // Realtime is the only endpoint AT sends with a content-length rather than
   // chunked, so a parse here is the proof that at_client's other branch works.
@@ -545,13 +548,12 @@ bool anything_soon(int64_t now) {
 // one failure spec 8 is written against.
 int32_t nominal_interval(int64_t now) { return anything_soon(now) ? RT_FAST_S : RT_SLOW_S; }
 
-// What gets published: when the board next expects news. With nothing upcoming
-// to ask realtime about - a quiet night - the next news is the schedule
-// refresh, so a healthy board must not read stale for most of every 15 minutes
-// just because realtime had nothing to do.
-int32_t expected_interval(int64_t now) {
-  if (realtime_ids(g_work, now, g_ids, MAX_RT_IDS, RT_PER_WATCH) == 0) return SCHEDULE_PERIOD_S;
-  return nominal_interval(now);
+// What gets published: when the board next expects news. The rule - the quiet
+// night's 15 minutes only while healthy, and never growing after a failure
+// until news arrives - is freshness_interval, tested in lib/core.
+int32_t published_interval(int64_t now) {
+  const bool upcoming = realtime_ids(g_work, now, g_ids, MAX_RT_IDS, RT_PER_WATCH) > 0;
+  return freshness_interval(g_fresh, upcoming, anything_soon(now));
 }
 
 void log_states() {
@@ -619,7 +621,8 @@ void task(void*) {
       // still the right clock here - it only stops being trustworthy before
       // the first sync, and then there are no rows to age anyway.
       const int64_t now = time(nullptr);
-      g_work.poll_interval_s = expected_interval(now);
+      freshness_failure(g_fresh);  // no link is no news, and no reason to relax
+      g_work.poll_interval_s = published_interval(now);
       publish();
       log_pass(wifi, false, now, NO_LINK_RETRY_S);
       vTaskDelay(pdMS_TO_TICKS(NO_LINK_RETRY_S * 1000));
@@ -643,7 +646,7 @@ void task(void*) {
     }
     refresh_realtime(now);
 
-    if (g_pass.news) g_work.last_ok = now;
+    g_work.last_ok = g_fresh.last_news;
 
     // 30 s while something is close, 2 minutes otherwise; doubling to a
     // 5 minute cap on 429, 5xx or a transport error, with the last good data
@@ -662,7 +665,7 @@ void task(void*) {
     // The backoff paces this task; it is never published. What is published is
     // when the board next expects news, so staleness grows from the last news
     // at the honest rate however far the backoff stretches.
-    g_work.poll_interval_s = expected_interval(now);
+    g_work.poll_interval_s = published_interval(now);
     publish();
     log_states();
     log_pass(true, true, now, pace);  // the log shows the real pacing
