@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -262,6 +263,7 @@ void load_rail() {
     return;
   }
   g_n_rail = parse_routes(g_doc, g_rail, MAX_RAIL);
+  g_doc.clear();  // every parse copies out: hand the heap back straight away
   g_rail_loaded = true;
   Serial.printf("rail: %d routes\n", g_n_rail);
 }
@@ -272,7 +274,9 @@ int lookup_stop(const char* stop_code, char* out, size_t n) {
   const int status = get(stop_filter);
   if (status != 200) return status;
   StopInfo info{};
-  if (!parse_stop(g_doc, &info)) return AT_EMPTY;
+  const bool found = parse_stop(g_doc, &info);
+  g_doc.clear();
+  if (!found) return AT_EMPTY;
   strncpy(out, info.stop_id, n - 1);
   out[n - 1] = '\0';
   return 200;
@@ -299,6 +303,7 @@ void resolve(int i, int64_t now) {
       if (status == 400) status = AT_EMPTY;
       if (status == 200) {
         const int n = parse_routes(g_doc, g_routes, 8);
+        g_doc.clear();
         if (n == 0) {
           status = AT_EMPTY;
         } else {
@@ -364,6 +369,7 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
       continue;
     }
     const int status = get(stoptrips_filter);
+    if (status != 200 && status != 404) Serial.printf("sched %s: HTTP %d\n", cfg.stop_code, status);
     if (status == 404) {
       // "No services in this window" - the same status as an unknown stop, and
       // never a reason to re-resolve one (spec 8, docs/at-api-notes.md). A
@@ -379,6 +385,7 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
       return false;
     }
     n += parse_stoptrips(g_doc, g_rows + n, MAX_SCHED_ROWS - n);
+    g_doc.clear();
   }
 
   if (r.n_routes > 0) {
@@ -426,6 +433,7 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
     }
     g_pair_failed[p] = false;
     const int n_stops = parse_trip_stops(g_doc, g_stops, MAX_TRIP_STOPS);
+    g_doc.clear();
     // Our stop here is the pair's own stop_id: a station's rows carry the
     // platform, and a trip's stop list contains platforms, not stations.
     pair.serves =
@@ -494,9 +502,6 @@ void refresh_realtime(int64_t now) {
     return;
   }
 
-  // Diagnostic (task 7a): on hardware this asked 6 ids and parsed 0 entities
-  // while the same query from a laptop returned 6. Print exactly what was sent.
-  Serial.printf("rt: ids %d url %.200s\n", n, g_url);
   const int status = get(realtime_filter);
   if (status == 401) {
     set_all(WatchState::CheckKey, now);
@@ -507,6 +512,7 @@ void refresh_realtime(int64_t now) {
     return;
   }
   const int n_ents = parse_realtime(g_doc, g_ents, MAX_ENTITIES);
+  g_doc.clear();
   for (int i = 0; i < g_work.n_watches; i++) {
     apply_realtime(g_work.watches[i], g_ents, n_ents, g_ids, n);
   }
@@ -607,11 +613,17 @@ void log_pass(bool wifi, bool clock_ok, int64_t now, int32_t interval) {
 
   // On ESP-IDF the high-water mark is in bytes (StackType_t is uint8_t): the
   // least free stack this task has ever had, out of 16384.
-  Serial.printf("fetch: wifi %d time %d sched %s rt %lds rows %s last_ok %s heap %u stack %u%s\n",
-                wifi ? 1 : 0, clock_ok ? 1 : 0, sched_s, static_cast<long>(interval), rows, ok_s,
-                static_cast<unsigned>(ESP.getFreeHeap()),
-                static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)),
-                g_backoff > 0 ? " backoff" : "");
+  // largest: the biggest block malloc could hand out now. Free heap can look
+  // healthy while fragmentation leaves no room for a TLS session.
+  // pub: the interval published for staleness, which is not the pacing.
+  Serial.printf(
+      "fetch: wifi %d time %d sched %s rt %lds pub %lds rows %s last_ok %s heap %u largest %u "
+      "stack %u%s\n",
+      wifi ? 1 : 0, clock_ok ? 1 : 0, sched_s, static_cast<long>(interval),
+      static_cast<long>(g_work.poll_interval_s), rows, ok_s,
+      static_cast<unsigned>(ESP.getFreeHeap()),
+      static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)),
+      static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)), g_backoff > 0 ? " backoff" : "");
 }
 
 void task(void*) {

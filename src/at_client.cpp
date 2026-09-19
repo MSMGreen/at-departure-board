@@ -11,6 +11,7 @@ namespace {
 
 constexpr uint32_t CONNECT_TIMEOUT_MS = 10000;
 constexpr uint32_t READ_TIMEOUT_MS = 10000;
+constexpr unsigned long HANDSHAKE_TIMEOUT_S = 15;  // a stalled TLS handshake, not a hang
 
 // Dechunker's source: block until the socket has a byte, or give up.
 int read_stream(void* ctx) {
@@ -29,8 +30,12 @@ int at_get(const char* url, JsonDocument& doc, const JsonDocument& filter) {
   WiFiClientSecure client;
   client.setCACert(AT_ROOT_CA);  // never setInsecure(): spec 8
   client.setTimeout(READ_TIMEOUT_MS / 1000);
+  client.setHandshakeTimeout(HANDSHAKE_TIMEOUT_S);
 
   HTTPClient http;
+  // Required, not a tuning choice: the de-chunker stops at the 0-size chunk and
+  // does not drain the trailing CRLF, so a reused connection would start the
+  // next response with two stray bytes. Every request gets a fresh session.
   http.setReuse(false);
   http.setConnectTimeout(CONNECT_TIMEOUT_MS);
   http.setTimeout(READ_TIMEOUT_MS);
