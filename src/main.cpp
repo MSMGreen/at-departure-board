@@ -17,6 +17,7 @@
 #include "config.h"
 #include "fetcher.h"
 #include "live.h"
+#include "portal.h"
 #include "secrets.h"
 #endif
 
@@ -121,6 +122,7 @@ void setup() {
   // Every network call from here on happens on the fetch task: core 0, 16 KB
   // of stack. The loop task does nothing but draw (spec 8).
   fetcher_begin();
+  portal_begin();
 
   Serial.println("BOOT-OK live");
 #endif
