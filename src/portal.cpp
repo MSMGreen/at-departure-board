@@ -166,10 +166,44 @@ void handle_check_stop() {
   g_server.send(200, "application/json", body);
 }
 
+// Persists a whole new configuration to NVS and reboots so it takes effect.
+// Spec section 6: config_save_json() writes NVS only and must NOT update the
+// in-RAM config, because the fetch task reads config_watches() on core 0 with
+// no lock and those WatchConfig pointers alias directly into the live Config
+// struct. So this handler validates, persists, flushes the response, then
+// restarts; the new values arrive via config_begin() on the way back up, at
+// the one moment nothing else is reading them.
+void handle_save_config() {
+  const String& body = g_server.arg("plain");
+  const CfgError e = config_save_json(body.c_str());
+  if (e != CfgError::Ok) {
+    JsonDocument out;
+    out["error"] = cfg_error_text(e);
+    char reply[192];
+    // serializeJson() does NOT null-terminate on an exact fill or truncation;
+    // g_server.send()'s const char* overload does a strlen-driven copy, so an
+    // unterminated buffer would ship whatever memory follows it. Fail closed.
+    const size_t n = serializeJson(out, reply, sizeof reply);
+    if (n == 0 || n >= sizeof reply) {
+      g_server.send(500, "application/json", "{\"error\":\"response too large\"}");
+      return;
+    }
+    g_server.send(400, "application/json", reply);
+    return;
+  }
+
+  g_server.send(200, "application/json", "{\"saved\":true,\"restarting\":true}");
+  g_server.client().flush();
+  Serial.println("portal: config saved, restarting");
+  delay(250);  // let the response leave before the stack goes down
+  ESP.restart();
+}
+
 void handle_not_found() { g_server.send(404, "text/plain", "not found"); }
 
 void portal_task(void*) {
   g_server.on("/api/config", HTTP_GET, handle_config);
+  g_server.on("/api/config", HTTP_POST, handle_save_config);
   g_server.on("/api/themes", HTTP_GET, handle_themes);
   g_server.on("/api/theme", HTTP_POST, handle_set_theme);
   g_server.on("/api/stop", HTTP_POST, handle_check_stop);
