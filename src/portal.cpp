@@ -12,7 +12,9 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <WebServer.h>
+#include <ctype.h>
 #include <stdarg.h>
+#include <string.h>
 
 #include "at_api.h"
 #include "at_client.h"
@@ -103,6 +105,24 @@ void handle_check_stop() {
     g_server.send(400, "application/json", "{\"error\":\"stop_code is required\"}");
     return;
   }
+  // Reject anything that is not plain ASCII alphanumeric before it reaches
+  // url_stop_by_code(), which only checks that the built URL fits and would
+  // otherwise pass '&', '#', whitespace or CR/LF straight into a request
+  // made with this device's API key. The length cap matches CFG_FIELD_CAP
+  // so anything accepted here also fits a saved watch's stop_code later.
+  const size_t code_len = strlen(code);
+  if (code_len >= CFG_FIELD_CAP) {
+    g_server.send(400, "application/json",
+                  "{\"error\":\"stop code must be letters and digits\"}");
+    return;
+  }
+  for (size_t i = 0; i < code_len; i++) {
+    if (!isalnum(static_cast<unsigned char>(code[i]))) {
+      g_server.send(400, "application/json",
+                    "{\"error\":\"stop code must be letters and digits\"}");
+      return;
+    }
+  }
 
   char url[256];
   if (!url_stop_by_code(url, sizeof url, code)) {
@@ -133,7 +153,16 @@ void handle_check_stop() {
   out["stop_code"] = code;
   out["stop_name"] = info.stop_name;
   char body[192];
-  serializeJson(out, body, sizeof body);
+  // serializeJson() does NOT null-terminate on an exact fill or truncation
+  // (it only writes the terminator when n < sizeof body); handing such a
+  // buffer to g_server.send()'s const char* overload lets its strlen-driven
+  // copy read past the array and ship whatever memory follows it. Fail
+  // closed instead of trusting the buffer was terminated.
+  const size_t n = serializeJson(out, body, sizeof body);
+  if (n == 0 || n >= sizeof body) {
+    g_server.send(500, "application/json", "{\"error\":\"response too large\"}");
+    return;
+  }
   g_server.send(200, "application/json", body);
 }
 
