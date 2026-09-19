@@ -916,6 +916,10 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 During this task and the next three you reach the board by the IP address `main.cpp` already logs (`wifi: connected, ip ...`). The mDNS name arrives in Task 11.
 
+**`src/portal.cpp`'s body must be wrapped in `#ifndef DEMO_MODE` / `#endif`.** PlatformIO compiles every `.cpp` under `src/` into *every* environment, regardless of which branch calls it. `fetcher.cpp` survives unguarded because its globals are plain data that `--gc-sections` drops; `WebServer g_server(80);` does not, because its constructor runs at boot whether or not `portal_begin()` is ever called, dragging lwIP and WiFi into the demo image. Measured: unguarded, the demo build grows from 352,777 to 465,693 bytes. Guarded, byte-identical.
+
+**Tasks 7-11 append handlers to this file, and every one of them goes *inside* that guard.** A handler added after the `#endif` re-breaks the demo build, and the symptom is a size change, not a compile error.
+
 - [ ] **Step 1: Write the header**
 
 Create `src/portal.h`:
@@ -984,13 +988,13 @@ void portal_task(void*) {
 
 void portal_begin() {
   // Core 0 alongside the fetcher (fetcher.cpp), leaving core 1 for drawing.
-  xTaskCreatePinnedToCore(portal_task, "portal", 8192, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(portal_task, "portal", 16384, nullptr, 1, nullptr, 0);
 }
 ```
 
 - [ ] **Step 3: Report the stack high-water mark**
 
-The 8 KB stack is a guess until measured. Inside `portal_task`, alongside the `handleClient()` loop, log the headroom every 30 seconds the same way `fetcher.cpp:626` does:
+The 16 KB stack (not the 8192 an earlier draft specified: Task 8 performs a full TLS handshake from this task, which is what the fetch task is given 16384 for) is still to be confirmed by measurement. Inside `portal_task`, alongside the `handleClient()` loop, log the headroom every 30 seconds the same way `fetcher.cpp:626` does:
 
 ```c
     static uint32_t last_hw = 0;
@@ -1027,7 +1031,7 @@ Expected: the config document; `{"selected":0,"themes":["transit","ghibli"]}`; a
 
 Then the things that matter more than the endpoints:
 1. `fps` stays ~15 in the monitor while you repeatedly curl the board
-2. `portal: stack free` is comfortably above zero — if it is under about 1500, raise the stack from 8192 and reflash
+2. `portal: stack free` is comfortably above zero — if it is under about 1500, raise the stack from 16384 and reflash
 3. `largest` in the existing report line does not fall away over a few minutes of requests
 
 - [ ] **Step 7: Commit**
