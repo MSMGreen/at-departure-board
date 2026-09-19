@@ -34,18 +34,22 @@ bool Dechunker::ensure() {
 
   char line[24];
   size_t n = 0;
-  for (;;) {
-    const int c = fn_(ctx_);
-    if (c < 0) {
-      done_ = true;
-      failed_ = true;
-      return false;
+  // Read size lines until one is not blank. A loop, not recursion: a peer
+  // sending blank lines must not be able to exhaust the fetch task's stack.
+  do {
+    n = 0;
+    for (;;) {
+      const int c = fn_(ctx_);
+      if (c < 0) {
+        done_ = true;
+        failed_ = true;
+        return false;
+      }
+      if (c == '\n') break;
+      if (c != '\r' && n < sizeof line - 1) line[n++] = static_cast<char>(c);
     }
-    if (c == '\n') break;
-    if (c != '\r' && n < sizeof line - 1) line[n++] = static_cast<char>(c);
-  }
+  } while (n == 0);  // a stray blank line between chunks
   line[n] = '\0';
-  if (n == 0) return ensure();  // stray blank line between chunks
 
   char* end = nullptr;
   const long size = strtol(line, &end, 16);  // chunk sizes are hex; ";ext" stops it
