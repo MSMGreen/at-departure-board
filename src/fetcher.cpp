@@ -157,7 +157,7 @@ bool ensure_time() {
     configTime(0, 0, "pool.ntp.org");  // UTC; nztime does the local conversion
     g_time_started = true;
   }
-  return time(nullptr) > 1700000000;
+  return time(nullptr) >= CLOCK_SET_AFTER;  // the same line format_clock draws
 }
 
 // A 401 is not transient and is not backed off, so both the resolution and the

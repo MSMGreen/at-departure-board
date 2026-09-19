@@ -37,5 +37,9 @@ bool parse_iso_date(const char* s, CivilDate* out);
 // service day, in absolute time, so noon stays noon when the clocks change.
 int64_t gtfs_epoch(CivilDate service_date, int32_t secs);
 
-void format_clock(int64_t epoch, char* out, size_t n);      // "17:42"
+// Any epoch before this is a clock NTP has not set yet (2023-11-15).
+constexpr int64_t CLOCK_SET_AFTER = 1700000000;
+
+void format_clock(int64_t epoch, char* out, size_t n);      // "17:42", or "--:--"
+                                                           // before CLOCK_SET_AFTER
 void format_iso_date(CivilDate d, char* out, size_t n);     // "2026-09-19"

@@ -133,6 +133,10 @@ int64_t gtfs_epoch(CivilDate service_date, int32_t secs) {
 }
 
 void format_clock(int64_t epoch, char* out, size_t n) {
+  if (epoch < CLOCK_SET_AFTER) {
+    snprintf(out, n, "--:--");  // no NTP yet: never a confident wrong time
+    return;
+  }
   const LocalTime t = nz_local(epoch);
   snprintf(out, n, "%02d:%02d", t.hour, t.min);
 }

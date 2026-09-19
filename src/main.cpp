@@ -102,7 +102,7 @@ void setup() {
   bool time_ok = false;
   if (wifi_ok) {
     for (int i = 0; i < 15; i++) {
-      if (time(nullptr) > 1700000000) {
+      if (time(nullptr) >= CLOCK_SET_AFTER) {
         time_ok = true;
         break;
       }

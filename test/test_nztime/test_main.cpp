@@ -108,6 +108,18 @@ void test_formatting() {
   TEST_ASSERT_EQUAL_STRING("2026-09-05", buf);
 }
 
+void test_no_confident_clock_before_ntp() {
+  // Before the first NTP sync time() counts up from 0: "12:00" drawn from
+  // that would be a confident lie.
+  char buf[16];
+  format_clock(0, buf, sizeof buf);
+  TEST_ASSERT_EQUAL_STRING("--:--", buf);
+  format_clock(1699999999, buf, sizeof buf);
+  TEST_ASSERT_EQUAL_STRING("--:--", buf);
+  format_clock(1700000000, buf, sizeof buf);  // 2023-11-15 11:13:20 NZDT
+  TEST_ASSERT_EQUAL_STRING("11:13", buf);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_civil_days_round_trip);
@@ -121,5 +133,6 @@ int main(int, char**) {
   RUN_TEST(test_parse_iso_date);
   RUN_TEST(test_gtfs_epoch_uses_noon_minus_twelve_hours);
   RUN_TEST(test_formatting);
+  RUN_TEST(test_no_confident_clock_before_ntp);
   return UNITY_END();
 }
