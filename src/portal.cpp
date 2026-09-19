@@ -10,6 +10,7 @@
 #ifndef DEMO_MODE
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <WebServer.h>
 #include <stdarg.h>
 
@@ -63,11 +64,33 @@ void handle_themes() {
   g_server.send(200, "application/json", json);
 }
 
+void handle_set_theme() {
+  JsonDocument doc;
+  if (deserializeJson(doc, g_server.arg("plain"))) {
+    g_server.send(400, "application/json", "{\"error\":\"bad JSON\"}");
+    return;
+  }
+  if (doc["theme"].isNull()) {
+    g_server.send(400, "application/json", "{\"error\":\"theme is required\"}");
+    return;
+  }
+  const uint8_t t = doc["theme"].as<uint8_t>();
+  if (t >= theme_count()) {
+    g_server.send(400, "application/json", "{\"error\":\"no such theme\"}");
+    return;
+  }
+  config_set_theme(t);
+  char body[64];
+  snprintf(body, sizeof body, "{\"theme\":%u}", static_cast<unsigned>(t));
+  g_server.send(200, "application/json", body);
+}
+
 void handle_not_found() { g_server.send(404, "text/plain", "not found"); }
 
 void portal_task(void*) {
   g_server.on("/api/config", HTTP_GET, handle_config);
   g_server.on("/api/themes", HTTP_GET, handle_themes);
+  g_server.on("/api/theme", HTTP_POST, handle_set_theme);
   g_server.onNotFound(handle_not_found);
   g_server.begin();
   Serial.println("portal: listening on :80");
