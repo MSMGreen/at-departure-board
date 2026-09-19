@@ -28,6 +28,7 @@ Ui ui(tft);
 constexpr uint32_t FRAME_MS = 1000 / 15;  // 15 fps, spec section 5
 constexpr uint32_t REPORT_MS = 5000;
 
+#ifdef DEMO_MODE
 void report(uint32_t now, uint32_t frames, uint32_t draw_ms_total, uint32_t since) {
   Serial.printf("fps %.1f  draw %lums  heap %u  largest %u  min-ever %u\n",
                 frames * 1000.0f / (now - since),
@@ -35,10 +36,25 @@ void report(uint32_t now, uint32_t frames, uint32_t draw_ms_total, uint32_t sinc
                 heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), ESP.getMinFreeHeap());
 }
 
-#ifdef DEMO_MODE
 Board board_now(uint32_t ms, int64_t) { return demo_board(ms); }
 #else
 Snapshot snap;  // static storage: a Snapshot is far too big for a task stack
+
+// Reuses the snapshot board_now() already copied this frame - never a second
+// fetcher_snapshot() call, which would be one more memcpy under the mutex.
+void report(uint32_t now, uint32_t frames, uint32_t draw_ms_total, uint32_t since) {
+  char rows[48] = "";
+  size_t off = 0;
+  for (uint8_t i = 0; i < snap.n_watches && off + 4 < sizeof rows; i++) {
+    off += snprintf(rows + off, sizeof(rows) - off, "%s%u", i ? "/" : "",
+                    static_cast<unsigned>(snap.watches[i].n_rows));
+  }
+  Serial.printf("fps %.1f  draw %lums  heap %u  largest %u  min-ever %u  rows %s\n",
+                frames * 1000.0f / (now - since),
+                static_cast<unsigned long>(draw_ms_total / frames), ESP.getFreeHeap(),
+                heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), ESP.getMinFreeHeap(), rows);
+}
+
 Board board_now(uint32_t, int64_t now) {
   fetcher_snapshot(&snap);  // a memcpy under the mutex, never a network wait
   return build_board(snap, WATCHES, LOCATION, now, 0);
@@ -109,21 +125,30 @@ void setup() {
 
 void loop() {
   static uint32_t frames = 0, draw_ms_total = 0, last_report = 0;
+  static uint32_t next_frame = 0;
+
+  const uint32_t start = millis();
+  if (next_frame == 0) next_frame = start;
+
 #ifdef DEMO_MODE
   static int last_scene = -1;
 
-  const uint32_t start = millis();
   const int scene = static_cast<int>((start / DEMO_SCENE_MS) % demo_scene_count());
   if (scene != last_scene) {
     const Board b = demo_board(start);
     Serial.printf("scene %s  theme %u\n", demo_scene(scene).name, b.theme);
     last_scene = scene;
   }
-#else
-  const uint32_t start = millis();
 #endif
 
-  ui.draw(board_now(start, time(nullptr)), start);
+  // time(nullptr) is whatever the RTC has. Before NTP lands it reads some
+  // small value near the 1970 epoch, but every watch is still
+  // WatchState::Starting until the fetcher's first successful resolve, so
+  // build_board skips its rows regardless (live.cpp: `if (lw.state !=
+  // WatchState::Ok) continue;`) - the lanes just say "starting" and no
+  // countdown is drawn from the bad clock.
+  const int64_t now = time(nullptr);
+  ui.draw(board_now(start, now), start);
 
   const uint32_t took = millis() - start;
   frames++;
@@ -134,5 +159,17 @@ void loop() {
     draw_ms_total = 0;
     last_report = start;
   }
-  if (took < FRAME_MS) delay(FRAME_MS - took);
+
+  // Pace against an absolute deadline rather than delaying by (FRAME_MS -
+  // took): a relative delay drifts by the draw time every frame, and over a
+  // long-running board that adds up. If we have fallen behind (a slow frame,
+  // or a Serial.printf report), snap the deadline to now instead of trying to
+  // catch up in one step.
+  next_frame += FRAME_MS;
+  const uint32_t now_ms = millis();
+  if (static_cast<int32_t>(next_frame - now_ms) > 0) {
+    delay(next_frame - now_ms);
+  } else {
+    next_frame = now_ms;  // we are behind; do not spiral
+  }
 }
