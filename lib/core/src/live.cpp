@@ -107,13 +107,16 @@ int select_rows(const StopTripRow rows[], int n, int direction,
   return count;
 }
 
-void apply_realtime(LiveWatch& w, const RtEntity ents[], int n) {
+void apply_realtime(LiveWatch& w, const RtEntity ents[], int n,
+                    const char* const requested[], int n_requested) {
   for (int i = 0; i < w.n_rows; i++) {
     LiveRow& row = w.rows[i];
+    bool matched = false;
     for (int e = 0; e < n; e++) {
       const RtEntity& ent = ents[e];
       if (strcmp(ent.trip_id, row.trip_id) != 0) continue;  // re-filter: the
                                                             // tripid query is inexact
+      matched = true;
       row.cancelled = ent.cancelled;
       // The per-stop update usually describes the vehicle's next stop, not
       // ours; prefer it only when it really is ours.
@@ -125,6 +128,17 @@ void apply_realtime(LiveWatch& w, const RtEntity ents[], int n) {
         row.has_rt = true;
       }
       break;
+    }
+    if (matched) continue;
+    // We asked about this trip and the feed said nothing: an old delay must
+    // never keep being shown as live.
+    for (int q = 0; q < n_requested; q++) {
+      if (strcmp(requested[q], row.trip_id) == 0) {
+        row.has_rt = false;
+        row.delay = 0;
+        row.cancelled = false;
+        break;
+      }
     }
   }
 }

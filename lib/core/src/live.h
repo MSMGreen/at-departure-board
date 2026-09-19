@@ -68,8 +68,11 @@ int select_rows(const StopTripRow rows[], int n, int direction,
                 LiveRow out[], int cap);
 
 // Applies delays and cancellations to rows whose trip_id we asked for; entities
-// for any other trip are discarded (the tripid filter is inexact).
-void apply_realtime(LiveWatch& w, const RtEntity ents[], int n);
+// for any other trip are discarded (the tripid filter is inexact). A row we DID
+// ask about and heard nothing back for has its realtime cleared: an old delay
+// must never keep being shown as live.
+void apply_realtime(LiveWatch& w, const RtEntity ents[], int n,
+                    const char* const requested[], int n_requested);
 
 // Trip ids worth asking realtime about: those still to come, at most
 // per_watch from each watch.

@@ -138,7 +138,8 @@ void test_apply_realtime_prefers_our_own_stop_time_update() {
   ents[2].has_delay = true;
   ents[2].delay = 12345;
 
-  apply_realtime(w, ents, 3);
+  const char* requested[] = {"t1", "t2"};
+  apply_realtime(w, ents, 3, requested, 2);
   TEST_ASSERT_TRUE(w.rows[0].has_rt);
   TEST_ASSERT_EQUAL_INT32(66, w.rows[0].delay);     // our stop wins
   TEST_ASSERT_EQUAL_INT32(-427, w.rows[1].delay);   // someone else's is ignored
@@ -151,8 +152,36 @@ void test_apply_realtime_marks_cancellations() {
   RtEntity e{};
   strncpy(e.trip_id, "t1", sizeof e.trip_id - 1);
   e.cancelled = true;
-  apply_realtime(w, &e, 1);
+  const char* requested[] = {"t1"};
+  apply_realtime(w, &e, 1, requested, 1);
   TEST_ASSERT_TRUE(w.rows[0].cancelled);
+}
+
+void test_a_requested_trip_the_feed_forgets_stops_being_live() {
+  LiveWatch w{};
+  w.n_rows = 2;
+  strncpy(w.rows[0].trip_id, "asked", sizeof w.rows[0].trip_id - 1);
+  w.rows[0].has_rt = true;
+  w.rows[0].delay = 240;
+  w.rows[0].cancelled = true;
+  strncpy(w.rows[1].trip_id, "not-asked", sizeof w.rows[1].trip_id - 1);
+  w.rows[1].has_rt = true;
+  w.rows[1].delay = 60;
+
+  // The feed answered, but said nothing about "asked".
+  RtEntity ents[1]{};
+  strncpy(ents[0].trip_id, "someone-else", sizeof ents[0].trip_id - 1);
+  ents[0].has_delay = true;
+  ents[0].delay = 12;
+  const char* requested[] = {"asked"};
+
+  apply_realtime(w, ents, 1, requested, 1);
+
+  TEST_ASSERT_FALSE(w.rows[0].has_rt);      // no longer claimed as live
+  TEST_ASSERT_EQUAL_INT32(0, w.rows[0].delay);
+  TEST_ASSERT_FALSE(w.rows[0].cancelled);
+  TEST_ASSERT_TRUE(w.rows[1].has_rt);       // never asked about: untouched
+  TEST_ASSERT_EQUAL_INT32(60, w.rows[1].delay);
 }
 
 void test_build_board_turns_a_snapshot_into_what_the_screen_draws() {
@@ -346,6 +375,7 @@ int main(int, char**) {
   RUN_TEST(test_select_rows_keeps_recent_departures_because_delays_can_be_large);
   RUN_TEST(test_apply_realtime_prefers_our_own_stop_time_update);
   RUN_TEST(test_apply_realtime_marks_cancellations);
+  RUN_TEST(test_a_requested_trip_the_feed_forgets_stops_being_live);
   RUN_TEST(test_build_board_turns_a_snapshot_into_what_the_screen_draws);
   RUN_TEST(test_build_board_drops_departures_that_have_left);
   RUN_TEST(test_build_board_orders_by_the_time_the_service_will_actually_leave);
