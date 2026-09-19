@@ -13,7 +13,7 @@ class Ui {
  public:
   explicit Ui(TFT_eSPI& tft);
   bool begin();  // false if the band sprite could not be allocated
-  void draw(const Board& board, float t);
+  void draw(const Board& board, uint32_t ms);
 
  private:
   TFT_eSprite band_;

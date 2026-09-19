@@ -54,7 +54,7 @@ void loop() {
     last_scene = scene;
   }
 
-  ui.draw(demo_board(start), start / 1000.0f);
+  ui.draw(demo_board(start), start);
 
   const uint32_t took = millis() - start;
   frames++;

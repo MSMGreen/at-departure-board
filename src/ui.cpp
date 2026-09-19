@@ -22,6 +22,12 @@ constexpr int MINUTES_DIGIT_H = 15;                 // for the cancelled strike
 // render.py hardcodes the location too; config owns it in the app plan.
 const char* const LOCATION = "Kingsland";
 
+// The bob is sin(5t): period 2*pi/5 s = 1256.64 ms. Folding time into 100
+// whole periods (125,664 ms) keeps the float argument small, so it never
+// loses precision however long the board has been up. The fold is 0.3 ms
+// off a whole number of periods: an invisible 0.0015 rad jump every ~2 min.
+constexpr uint32_t BOB_FOLD_MS = 125664;
+
 void status_bar(Painter& p, const Board& b, const Theme& th) {
   p.rect(0, 0, W, STATUS_H, th.colours[C_PANEL]);
   const int mid = STATUS_H / 2;
@@ -201,9 +207,10 @@ bool Ui::begin() {
   return band_.createSprite(W, BAND_H) != nullptr;
 }
 
-void Ui::draw(const Board& b, float t) {
+void Ui::draw(const Board& b, uint32_t ms) {
   const Theme& th = theme(b.theme);
-  const int n = b.n_watches;
+  const float t = (ms % BOB_FOLD_MS) / 1000.0f;
+  const int n = b.n_watches < MAX_WATCHES ? b.n_watches : MAX_WATCHES;
   const SizeClass size = size_class(n);
   for (int oy = 0; oy < H; oy += BAND_H) {
     Painter p{band_, oy, b.dimmed};
