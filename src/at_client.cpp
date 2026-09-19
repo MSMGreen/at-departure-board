@@ -39,6 +39,9 @@ int at_get(const char* url, JsonDocument& doc, const JsonDocument& filter) {
 
   const int status = http.GET();
   if (status <= 0) {
+    char err[128];
+    client.lastError(err, sizeof err);
+    Serial.printf("at_get: transport error %d, TLS/socket detail: %s\n", status, err);
     http.end();
     return AT_TRANSPORT_ERROR;
   }

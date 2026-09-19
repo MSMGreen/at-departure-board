@@ -62,18 +62,54 @@ void setup() {
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  configTime(0, 0, "pool.ntp.org");  // UTC - nztime does the local conversion
 
-  JsonDocument filter, doc;
-  stop_filter(filter);
-  char url[256];
-  for (int i = 0; i < N_WATCHES; i++) {
-    url_stop_by_code(url, sizeof url, WATCHES[i].stop_code);
-    const int status = at_get(url, doc, filter);
-    StopInfo info{};
-    const bool ok = status == 200 && parse_stop(doc, &info);
-    Serial.printf("stop %s -> HTTP %d %s (location_type %d)\n", WATCHES[i].stop_code,
-                  status, ok ? info.stop_id : "unresolved", info.location_type);
+  bool wifi_ok = false;
+  for (int i = 0; i < 20; i++) {
+    if (WiFi.status() == WL_CONNECTED) {
+      wifi_ok = true;
+      break;
+    }
+    Serial.printf("wifi: status %d\n", WiFi.status());
+    delay(1000);
+  }
+  if (wifi_ok) {
+    Serial.printf("wifi: connected, ip %s rssi %d\n", WiFi.localIP().toString().c_str(),
+                  WiFi.RSSI());
+  } else {
+    Serial.printf("wifi: FAILED status %d\n", WiFi.status());
+    Serial.println("skipping self-check: no wifi");
+  }
+
+  bool time_ok = false;
+  if (wifi_ok) {
+    configTime(0, 0, "pool.ntp.org");  // UTC - nztime does the local conversion
+    for (int i = 0; i < 15; i++) {
+      if (time(nullptr) > 1700000000) {
+        time_ok = true;
+        break;
+      }
+      delay(1000);
+    }
+    if (time_ok) {
+      Serial.printf("time: %lld\n", static_cast<int64_t>(time(nullptr)));
+    } else {
+      Serial.println("time: FAILED");
+      Serial.println("skipping self-check: no time");
+    }
+  }
+
+  if (wifi_ok && time_ok) {
+    JsonDocument filter, doc;
+    stop_filter(filter);
+    char url[256];
+    for (int i = 0; i < N_WATCHES; i++) {
+      url_stop_by_code(url, sizeof url, WATCHES[i].stop_code);
+      const int status = at_get(url, doc, filter);
+      StopInfo info{};
+      const bool ok = status == 200 && parse_stop(doc, &info);
+      Serial.printf("stop %s -> HTTP %d %s (location_type %d)\n", WATCHES[i].stop_code,
+                    status, ok ? info.stop_id : "unresolved", info.location_type);
+    }
   }
 
   Serial.println("BOOT-OK live");
