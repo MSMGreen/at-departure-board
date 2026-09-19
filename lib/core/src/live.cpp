@@ -8,6 +8,10 @@ namespace {
 // are real, and so are late ones.
 constexpr int64_t KEEP_PAST_S = 1800;
 
+// How long past its scheduled time a trip realtime has never mentioned is
+// still asked about. It may be late rather than gone.
+constexpr int64_t NEVER_HEARD_S = 900;
+
 struct Candidate {
   int32_t eta_s;
   bool live;
@@ -218,6 +222,19 @@ void apply_realtime(LiveWatch& w, const RtEntity ents[], int n,
   }
 }
 
+void carry_realtime(const LiveRow old_rows[], int n_old, LiveRow new_rows[], int n_new) {
+  for (int i = 0; i < n_new; i++) {
+    LiveRow& row = new_rows[i];
+    for (int k = 0; k < n_old; k++) {
+      if (strcmp(old_rows[k].trip_id, row.trip_id) != 0) continue;
+      row.has_rt = old_rows[k].has_rt;
+      row.delay = old_rows[k].delay;
+      row.cancelled = old_rows[k].cancelled;
+      break;
+    }
+  }
+}
+
 int realtime_ids(const Snapshot& s, int64_t now, const char* out[], int cap, int per_watch) {
   int count = 0;
   for (int i = 0; i < s.n_watches && count < cap; i++) {
@@ -227,7 +244,11 @@ int realtime_ids(const Snapshot& s, int64_t now, const char* out[], int cap, int
     for (int r = 0; r < w.n_rows && count < cap && taken < per_watch; r++) {
       const LiveRow& row = w.rows[r];
       if (row.trip_id[0] == '\0') continue;
-      if (row.sched_epoch + row.delay < now - 60) continue;
+      if (row.has_rt) {
+        if (row.sched_epoch + row.delay < now - 60) continue;  // it has left
+      } else if (row.sched_epoch < now - NEVER_HEARD_S) {
+        continue;  // no word of it for 15 minutes past its time: gone
+      }
       out[count++] = row.trip_id;
       taken++;
     }

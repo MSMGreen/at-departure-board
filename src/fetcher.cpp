@@ -82,6 +82,9 @@ StopTripRow g_rows[MAX_SCHED_ROWS];
 RouteDir g_pairs[MAX_ROUTE_DIRS];
 bool g_pair_failed[MAX_ROUTE_DIRS];  // its trips/{id}/stops did not answer 200
 char g_log[200];  // the "dirs" line: six pairs of up to ~26 characters
+// The rows a schedule refresh is about to replace, so what realtime already
+// said about them can be carried across (carry_realtime). File scope, not stack.
+LiveRow g_old_rows[MAX_ROWS];
 TripStop g_stops[MAX_TRIP_STOPS];
 RtEntity g_ents[MAX_ENTITIES];
 const char* g_ids[MAX_RT_IDS];  // pointers into g_work's own rows
@@ -448,8 +451,14 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
     w.n_rows = 0;
   } else {
     const char* rids[MAX_PINNED] = {r.route_ids[0], r.route_ids[1]};
+    // The rebuild starts every row with no realtime. Carry across what the
+    // feed already said, or a bus running late would be dropped as departed
+    // at every refresh while it is still minutes away.
+    const int n_old = w.n_rows;
+    memcpy(g_old_rows, w.rows, sizeof g_old_rows);
     w.n_rows = static_cast<uint8_t>(select_serving_rows(g_rows, n, g_pairs, n_pairs, rids,
                                                        r.n_routes, now, w.rows, MAX_ROWS));
+    carry_realtime(g_old_rows, n_old, w.rows, w.n_rows);
     if (w.n_rows > 0) {
       const char* rid = route_of(w.rows[0].trip_id, n);
       if (rid != nullptr) style_from_route(w, rid);

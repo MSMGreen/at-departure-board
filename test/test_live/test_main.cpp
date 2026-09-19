@@ -359,6 +359,114 @@ void test_realtime_ids_asks_only_about_services_still_to_come() {
   TEST_ASSERT_EQUAL_INT(1, realtime_ids(s, T_15_00, ids, 8, 1));  // per-watch cap
 }
 
+void test_a_late_bus_survives_a_schedule_refresh() {
+  // C1: scheduled 15:00, realtime says +300. At 15:02 the 15-minute schedule
+  // refresh rebuilds the rows. The bus is still 3 minutes out and must stay.
+  const StopTripRow rows[] = {row("late", "20-202", 0, 15 * 3600),
+                              row("next", "20-202", 0, 15 * 3600 + 1200)};
+  RouteDir pairs[MAX_ROUTE_DIRS];
+  const int n_pairs = collect_route_dirs(rows, 2, pairs, MAX_ROUTE_DIRS);
+  pairs[0].serves = true;
+
+  Snapshot s{};
+  s.n_watches = 1;
+  LiveWatch& w = s.watches[0];
+  w.state = WatchState::Ok;
+  w.n_rows = static_cast<uint8_t>(
+      select_serving_rows(rows, 2, pairs, n_pairs, nullptr, 0, T_15_00 - 600, w.rows, MAX_ROWS));
+  TEST_ASSERT_EQUAL_UINT8(2, w.n_rows);
+
+  RtEntity e{};
+  strncpy(e.trip_id, "late", sizeof e.trip_id - 1);
+  e.has_delay = true;
+  e.delay = 300;
+  const char* asked[] = {"late", "next"};
+  apply_realtime(w, &e, 1, asked, 2);
+  TEST_ASSERT_TRUE(w.rows[0].has_rt);
+
+  // The refresh at sched + 120.
+  const int64_t now = T_15_00 + 120;
+  LiveRow fresh[MAX_ROWS];
+  const int n = select_serving_rows(rows, 2, pairs, n_pairs, nullptr, 0, now, fresh, MAX_ROWS);
+  carry_realtime(w.rows, w.n_rows, fresh, n);
+  memcpy(w.rows, fresh, sizeof fresh);
+  w.n_rows = static_cast<uint8_t>(n);
+
+  TEST_ASSERT_TRUE(w.rows[0].has_rt);
+  TEST_ASSERT_EQUAL_INT32(300, w.rows[0].delay);
+  TEST_ASSERT_FALSE(w.rows[1].has_rt);  // nothing was said about it
+
+  const char* ids[8];
+  const int n_ids = realtime_ids(s, now, ids, 8, 6);
+  TEST_ASSERT_EQUAL_INT(2, n_ids);
+  TEST_ASSERT_EQUAL_STRING("late", ids[0]);
+
+  s.last_ok = now;
+  s.poll_interval_s = 30;
+  const WatchConfig cfg[] = {{"to Wynyard Quarter", "8213", "20", "1060"}};
+  const Board b = build_board(s, cfg, "K", now, 0);
+  TEST_ASSERT_EQUAL_UINT8(2, b.watches[0].n_deps);
+  TEST_ASSERT_EQUAL_INT32(180, b.watches[0].next()->eta_s);
+  TEST_ASSERT_TRUE(b.watches[0].next()->live);
+}
+
+void test_carry_realtime_matches_by_trip_id_not_position() {
+  LiveRow old_rows[2]{};
+  strncpy(old_rows[0].trip_id, "a", sizeof old_rows[0].trip_id - 1);
+  strncpy(old_rows[1].trip_id, "b", sizeof old_rows[1].trip_id - 1);
+  old_rows[1].has_rt = true;
+  old_rows[1].delay = -45;
+  old_rows[1].cancelled = true;
+
+  LiveRow new_rows[2]{};
+  strncpy(new_rows[0].trip_id, "b", sizeof new_rows[0].trip_id - 1);
+  strncpy(new_rows[1].trip_id, "c", sizeof new_rows[1].trip_id - 1);
+  carry_realtime(old_rows, 2, new_rows, 2);
+
+  TEST_ASSERT_TRUE(new_rows[0].has_rt);
+  TEST_ASSERT_EQUAL_INT32(-45, new_rows[0].delay);
+  TEST_ASSERT_TRUE(new_rows[0].cancelled);
+  TEST_ASSERT_FALSE(new_rows[1].has_rt);  // a new trip starts with no realtime
+  TEST_ASSERT_EQUAL_INT32(0, new_rows[1].delay);
+  TEST_ASSERT_FALSE(new_rows[1].cancelled);
+}
+
+void test_a_never_heard_of_row_five_minutes_past_is_still_asked_about() {
+  Snapshot s{};
+  s.n_watches = 1;
+  s.watches[0].state = WatchState::Ok;
+  s.watches[0].n_rows = 1;
+  strncpy(s.watches[0].rows[0].trip_id, "maybe-late", sizeof s.watches[0].rows[0].trip_id - 1);
+  s.watches[0].rows[0].sched_epoch = T_15_00 - 300;
+  const char* ids[4];
+  TEST_ASSERT_EQUAL_INT(1, realtime_ids(s, T_15_00, ids, 4, 6));
+  TEST_ASSERT_EQUAL_STRING("maybe-late", ids[0]);
+}
+
+void test_a_never_heard_of_row_twenty_minutes_past_is_not() {
+  Snapshot s{};
+  s.n_watches = 1;
+  s.watches[0].state = WatchState::Ok;
+  s.watches[0].n_rows = 1;
+  strncpy(s.watches[0].rows[0].trip_id, "gone", sizeof s.watches[0].rows[0].trip_id - 1);
+  s.watches[0].rows[0].sched_epoch = T_15_00 - 1200;
+  const char* ids[4];
+  TEST_ASSERT_EQUAL_INT(0, realtime_ids(s, T_15_00, ids, 4, 6));
+}
+
+void test_a_heard_of_row_that_has_left_is_not_asked_about() {
+  Snapshot s{};
+  s.n_watches = 1;
+  s.watches[0].state = WatchState::Ok;
+  s.watches[0].n_rows = 1;
+  strncpy(s.watches[0].rows[0].trip_id, "left", sizeof s.watches[0].rows[0].trip_id - 1);
+  s.watches[0].rows[0].sched_epoch = T_15_00 - 300;
+  s.watches[0].rows[0].has_rt = true;
+  s.watches[0].rows[0].delay = 120;  // left three minutes ago
+  const char* ids[4];
+  TEST_ASSERT_EQUAL_INT(0, realtime_ids(s, T_15_00, ids, 4, 6));
+}
+
 void test_schedule_windows_cover_three_hours_from_now() {
   FetchWindow w[2];
   LocalTime t{};
@@ -443,6 +551,11 @@ int main(int, char**) {
   RUN_TEST(test_build_board_orders_by_the_time_the_service_will_actually_leave);
   RUN_TEST(test_staleness_is_measured_against_the_polling_interval);
   RUN_TEST(test_realtime_ids_asks_only_about_services_still_to_come);
+  RUN_TEST(test_a_late_bus_survives_a_schedule_refresh);
+  RUN_TEST(test_carry_realtime_matches_by_trip_id_not_position);
+  RUN_TEST(test_a_never_heard_of_row_five_minutes_past_is_still_asked_about);
+  RUN_TEST(test_a_never_heard_of_row_twenty_minutes_past_is_not);
+  RUN_TEST(test_a_heard_of_row_that_has_left_is_not_asked_about);
   RUN_TEST(test_schedule_windows_cover_three_hours_from_now);
   RUN_TEST(test_schedule_windows_split_at_midnight_because_the_api_clamps);
   RUN_TEST(test_schedule_windows_never_ask_for_hour_zero);

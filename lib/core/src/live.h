@@ -103,8 +103,16 @@ WatchState verdict_for_pairs(const RouteDir pairs[], int n_pairs);
 void apply_realtime(LiveWatch& w, const RtEntity ents[], int n,
                     const char* const requested[], int n_requested);
 
+// A schedule refresh rebuilds every row from scratch, which would forget what
+// realtime already said. For each new row, copy has_rt, delay and cancelled
+// from the old row with the same trip_id, if there is one. Without this a bus
+// running late is dropped as "departed" at every 15-minute refresh.
+void carry_realtime(const LiveRow old_rows[], int n_old, LiveRow new_rows[], int n_new);
+
 // Trip ids worth asking realtime about: those still to come, at most
-// per_watch from each watch.
+// per_watch from each watch. A row realtime has spoken about is still to come
+// until sched + delay is a minute gone; a row it never has may be late rather
+// than gone, so it is asked about for 15 minutes past its scheduled time.
 int realtime_ids(const Snapshot& s, int64_t now, const char* out[], int cap, int per_watch);
 
 struct FetchWindow {
