@@ -1,15 +1,23 @@
-// Firmware entry point. Only DEMO_MODE exists until the data-path plan lands:
-// the canonical scenes from tools/board/scenes.py, counting down in real time.
+// Firmware entry point. DEMO_MODE plays the canonical scenes from
+// tools/board/scenes.py, counting down in real time; otherwise this is the
+// live data path (spec section 9).
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include <esp_heap_caps.h>
+#include <time.h>
 
 #include "backlight.h"
-#include "demo.h"
 #include "ui.h"
 
-#ifndef DEMO_MODE
-#error "Only DEMO_MODE is implemented; the live data path is a later plan."
+#ifdef DEMO_MODE
+#include "demo.h"
+#else
+#include <WiFi.h>
+
+#include "at_client.h"
+#include "live.h"
+#include "secrets.h"
+#include "watch_config.h"
 #endif
 
 namespace {
@@ -27,6 +35,13 @@ void report(uint32_t now, uint32_t frames, uint32_t draw_ms_total, uint32_t sinc
                 heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), ESP.getMinFreeHeap());
 }
 
+#ifdef DEMO_MODE
+Board board_now(uint32_t ms, int64_t) { return demo_board(ms); }
+#else
+Snapshot snap;  // static storage: a Snapshot is far too big for a task stack
+Board board_now(uint32_t, int64_t now) { return build_board(snap, WATCHES, LOCATION, now, 0); }
+#endif
+
 }  // namespace
 
 void setup() {
@@ -39,11 +54,35 @@ void setup() {
     tft.fillScreen(TFT_RED);
     for (;;) delay(1000);
   }
+
+#ifdef DEMO_MODE
   Serial.println("BOOT-OK demo");
+#else
+  snap.n_watches = N_WATCHES;  // every watch left Starting until fetched
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  configTime(0, 0, "pool.ntp.org");  // UTC - nztime does the local conversion
+
+  JsonDocument filter, doc;
+  stop_filter(filter);
+  char url[256];
+  for (int i = 0; i < N_WATCHES; i++) {
+    url_stop_by_code(url, sizeof url, WATCHES[i].stop_code);
+    const int status = at_get(url, doc, filter);
+    StopInfo info{};
+    const bool ok = status == 200 && parse_stop(doc, &info);
+    Serial.printf("stop %s -> HTTP %d %s (location_type %d)\n", WATCHES[i].stop_code,
+                  status, ok ? info.stop_id : "unresolved", info.location_type);
+  }
+
+  Serial.println("BOOT-OK live");
+#endif
 }
 
 void loop() {
   static uint32_t frames = 0, draw_ms_total = 0, last_report = 0;
+#ifdef DEMO_MODE
   static int last_scene = -1;
 
   const uint32_t start = millis();
@@ -53,8 +92,11 @@ void loop() {
     Serial.printf("scene %s  theme %u\n", demo_scene(scene).name, b.theme);
     last_scene = scene;
   }
+#else
+  const uint32_t start = millis();
+#endif
 
-  ui.draw(demo_board(start), start);
+  ui.draw(board_now(start, time(nullptr)), start);
 
   const uint32_t took = millis() - start;
   frames++;
