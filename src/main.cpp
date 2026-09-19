@@ -14,7 +14,7 @@
 #else
 #include <WiFi.h>
 
-#include "at_client.h"
+#include "fetcher.h"
 #include "live.h"
 #include "secrets.h"
 #include "watch_config.h"
@@ -39,7 +39,10 @@ void report(uint32_t now, uint32_t frames, uint32_t draw_ms_total, uint32_t sinc
 Board board_now(uint32_t ms, int64_t) { return demo_board(ms); }
 #else
 Snapshot snap;  // static storage: a Snapshot is far too big for a task stack
-Board board_now(uint32_t, int64_t now) { return build_board(snap, WATCHES, LOCATION, now, 0); }
+Board board_now(uint32_t, int64_t now) {
+  fetcher_snapshot(&snap);  // a memcpy under the mutex, never a network wait
+  return build_board(snap, WATCHES, LOCATION, now, 0);
+}
 #endif
 
 }  // namespace
@@ -58,8 +61,6 @@ void setup() {
 #ifdef DEMO_MODE
   Serial.println("BOOT-OK demo");
 #else
-  snap.n_watches = N_WATCHES;  // every watch left Starting until fetched
-
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
@@ -77,12 +78,13 @@ void setup() {
                   WiFi.RSSI());
   } else {
     Serial.printf("wifi: FAILED status %d\n", WiFi.status());
-    Serial.println("skipping self-check: no wifi");
   }
 
+  // NTP is started here and waited for only as a courtesy to the log: the
+  // fetcher retries both WiFi and the clock on its own.
+  configTime(0, 0, "pool.ntp.org");  // UTC - nztime does the local conversion
   bool time_ok = false;
   if (wifi_ok) {
-    configTime(0, 0, "pool.ntp.org");  // UTC - nztime does the local conversion
     for (int i = 0; i < 15; i++) {
       if (time(nullptr) > 1700000000) {
         time_ok = true;
@@ -90,27 +92,16 @@ void setup() {
       }
       delay(1000);
     }
-    if (time_ok) {
-      Serial.printf("time: %lld\n", static_cast<int64_t>(time(nullptr)));
-    } else {
-      Serial.println("time: FAILED");
-      Serial.println("skipping self-check: no time");
-    }
+  }
+  if (time_ok) {
+    Serial.printf("time: %lld\n", static_cast<int64_t>(time(nullptr)));
+  } else {
+    Serial.println("time: not synced yet");
   }
 
-  if (wifi_ok && time_ok) {
-    JsonDocument filter, doc;
-    stop_filter(filter);
-    char url[256];
-    for (int i = 0; i < N_WATCHES; i++) {
-      url_stop_by_code(url, sizeof url, WATCHES[i].stop_code);
-      const int status = at_get(url, doc, filter);
-      StopInfo info{};
-      const bool ok = status == 200 && parse_stop(doc, &info);
-      Serial.printf("stop %s -> HTTP %d %s (location_type %d)\n", WATCHES[i].stop_code,
-                    status, ok ? info.stop_id : "unresolved", info.location_type);
-    }
-  }
+  // Every network call from here on happens on the fetch task: core 0, 16 KB
+  // of stack. The loop task does nothing but draw (spec 8).
+  fetcher_begin();
 
   Serial.println("BOOT-OK live");
 #endif
