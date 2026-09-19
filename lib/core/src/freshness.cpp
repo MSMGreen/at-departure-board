@@ -20,3 +20,13 @@ int32_t freshness_interval(Freshness& f, bool anything_upcoming, bool within_30_
   f.interval = interval;
   return interval;
 }
+
+int64_t board_last_ok(int64_t last_news, const Snapshot& s, const int64_t sched_ok_at[]) {
+  int64_t out = last_news;
+  for (int i = 0; i < s.n_watches; i++) {
+    if (s.watches[i].state != WatchState::Ok) continue;
+    const int64_t due = sched_ok_at[i] + SCHEDULE_PERIOD_S;
+    if (due < out) out = due;
+  }
+  return out;
+}

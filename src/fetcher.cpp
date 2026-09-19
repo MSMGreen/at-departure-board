@@ -70,6 +70,10 @@ struct Resolved {
   CivilDate sched_date;
 };
 Resolved g_res[MAX_WATCHES];
+// Per watch, the epoch of its last conclusive schedule refresh. The board is
+// only as fresh as its stalest schedule (board_last_ok): realtime news for one
+// watch must not keep another, whose schedule keeps failing, looking live.
+int64_t g_sched_ok_at[MAX_WATCHES];
 
 RouteInfo g_rail[MAX_RAIL];
 int g_n_rail = 0;
@@ -470,6 +474,7 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
   }
 
   r.next_sched = now + SCHEDULE_PERIOD_S;
+  g_sched_ok_at[i] = now;
   freshness_news(g_fresh, now);
   const char* m = state_message(w.state);
   log_pairs(cfg.stop_code, n_pairs, m[0] != '\0' ? m : "ok");
@@ -646,7 +651,7 @@ void task(void*) {
     }
     refresh_realtime(now);
 
-    g_work.last_ok = g_fresh.last_news;
+    g_work.last_ok = board_last_ok(g_fresh.last_news, g_work, g_sched_ok_at);
 
     // 30 s while something is close, 2 minutes otherwise; doubling to a
     // 5 minute cap on 429, 5xx or a transport error, with the last good data
@@ -691,6 +696,7 @@ void fetcher_begin() {
     g_work.watches[i].state = WatchState::Starting;
     g_work.watches[i].kind = Kind::Bus;
     memset(&g_res[i], 0, sizeof g_res[i]);
+    g_sched_ok_at[i] = 0;
     g_logged[i] = WatchState::Starting;
   }
   publish();  // the render loop has something honest to draw immediately

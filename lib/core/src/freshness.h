@@ -33,3 +33,12 @@ void freshness_failure(Freshness& f);
 // published interval never grows until news arrives: a growing interval would
 // shrink stale_s, and an outage would un-stale the board.
 int32_t freshness_interval(Freshness& f, bool anything_upcoming, bool within_30_min);
+
+// The last_ok to publish. A realtime 200 is news for every watch at once, so
+// on its own it would let one watch whose schedule keeps failing run out of
+// rows under a green "live" while the other watch kept last_news fresh. So the
+// board is only as fresh as its stalest schedule: last_ok is the earlier of
+// last_news and, over the watches in state Ok, the oldest sched_ok_at (the
+// epoch of that watch's last conclusive schedule refresh) plus
+// SCHEDULE_PERIOD_S. sched_ok_at has one entry per watch in s.
+int64_t board_last_ok(int64_t last_news, const Snapshot& s, const int64_t sched_ok_at[]);

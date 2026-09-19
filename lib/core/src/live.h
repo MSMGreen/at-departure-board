@@ -50,7 +50,7 @@ struct LiveWatch {
 struct Snapshot {
   LiveWatch watches[MAX_WATCHES];
   uint8_t n_watches;
-  int64_t last_ok;         // epoch of the last successful fetch, 0 if never
+  int64_t last_ok;         // see board_last_ok (freshness.h); 0 if never
   int32_t poll_interval_s; // what the fetcher is currently aiming for
 };
 
