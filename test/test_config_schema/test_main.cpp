@@ -136,6 +136,66 @@ void test_every_error_has_text() {
   }
 }
 
+void test_round_trips_through_serialise() {
+  Config a{};
+  TEST_ASSERT_TRUE(cfg_parse(GOOD, &a, 2) == CfgError::Ok);
+  char buf[CFG_JSON_CAP];
+  const size_t n = cfg_serialize(a, buf, sizeof buf);
+  TEST_ASSERT_TRUE(n > 0);
+  TEST_ASSERT_EQUAL_size_t(n, strlen(buf));
+
+  Config b{};
+  TEST_ASSERT_TRUE(cfg_parse(buf, &b, 2) == CfgError::Ok);
+  TEST_ASSERT_EQUAL_STRING(a.location, b.location);
+  TEST_ASSERT_EQUAL_UINT8(a.theme, b.theme);
+  TEST_ASSERT_EQUAL_UINT8(a.n_watches, b.n_watches);
+  for (int i = 0; i < a.n_watches; i++) {
+    TEST_ASSERT_EQUAL_STRING(a.watches[i].label, b.watches[i].label);
+    TEST_ASSERT_EQUAL_STRING(a.watches[i].stop_code, b.watches[i].stop_code);
+    TEST_ASSERT_EQUAL_STRING(a.watches[i].route_short_name, b.watches[i].route_short_name);
+    TEST_ASSERT_EQUAL_STRING(a.watches[i].toward_stop_code, b.watches[i].toward_stop_code);
+    // The disabled watch must survive the round trip as disabled.
+    TEST_ASSERT_EQUAL_INT(a.watches[i].enabled, b.watches[i].enabled);
+  }
+}
+
+void test_serialise_refuses_a_small_buffer() {
+  Config a{};
+  TEST_ASSERT_TRUE(cfg_parse(GOOD, &a, 2) == CfgError::Ok);
+  char small[16];
+  TEST_ASSERT_EQUAL_size_t(0, cfg_serialize(a, small, sizeof small));
+  TEST_ASSERT_EQUAL_STRING("", small);
+}
+
+void test_publish_compacts_around_a_disabled_watch() {
+  const char* j =
+      "{\"v\":1,\"location\":\"X\",\"theme\":0,\"watches\":["
+      "{\"label\":\"first\",\"stop_code\":\"1\",\"route_short_name\":\"\","
+      "\"toward_stop_code\":\"\",\"enabled\":true},"
+      "{\"label\":\"middle\",\"stop_code\":\"2\",\"route_short_name\":\"\","
+      "\"toward_stop_code\":\"\",\"enabled\":false},"
+      "{\"label\":\"last\",\"stop_code\":\"3\",\"route_short_name\":\"\","
+      "\"toward_stop_code\":\"\",\"enabled\":true}]}";
+  Config c{};
+  TEST_ASSERT_TRUE(cfg_parse(j, &c, 2) == CfgError::Ok);
+  TEST_ASSERT_EQUAL_UINT8(3, c.n_watches);
+
+  WatchConfig pub[MAX_WATCHES];
+  TEST_ASSERT_EQUAL_UINT8(2, cfg_publish(c, pub));
+  TEST_ASSERT_EQUAL_STRING("first", pub[0].label);
+  TEST_ASSERT_EQUAL_STRING("1", pub[0].stop_code);
+  TEST_ASSERT_EQUAL_STRING("last", pub[1].label);
+  TEST_ASSERT_EQUAL_STRING("3", pub[1].stop_code);
+}
+
+void test_published_pointers_reach_into_the_config() {
+  Config c{};
+  TEST_ASSERT_TRUE(cfg_parse(GOOD, &c, 2) == CfgError::Ok);
+  WatchConfig pub[MAX_WATCHES];
+  TEST_ASSERT_EQUAL_UINT8(1, cfg_publish(c, pub));  // second watch is disabled
+  TEST_ASSERT_EQUAL_PTR(c.watches[0].stop_code, pub[0].stop_code);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_parses_a_good_document);
@@ -148,5 +208,9 @@ int main(int, char**) {
   RUN_TEST(test_rejects_overlong_fields);
   RUN_TEST(test_failed_parse_leaves_the_target_alone);
   RUN_TEST(test_every_error_has_text);
+  RUN_TEST(test_round_trips_through_serialise);
+  RUN_TEST(test_serialise_refuses_a_small_buffer);
+  RUN_TEST(test_publish_compacts_around_a_disabled_watch);
+  RUN_TEST(test_published_pointers_reach_into_the_config);
   return UNITY_END();
 }

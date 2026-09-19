@@ -47,3 +47,12 @@ const char* cfg_error_text(CfgError e);
 // theme is clamped to [0, theme_max), never rejected - a theme can disappear
 // when the generated table changes and that must not brick the config.
 CfgError cfg_parse(const char* json, Config* out, uint8_t theme_max);
+
+// Serialises cfg as the document cfg_parse accepts. Returns the length
+// written, or 0 if cap was too small (out is then left empty).
+size_t cfg_serialize(const Config& cfg, char* out, size_t cap);
+
+// Fills out[] with the enabled watches, compacted and in order, and returns
+// how many. The WatchConfig pointers point INTO cfg, so cfg must outlive out[]
+// and out[] must be refilled whenever cfg changes.
+uint8_t cfg_publish(const Config& cfg, WatchConfig out[MAX_WATCHES]);

@@ -71,3 +71,39 @@ CfgError cfg_parse(const char* json, Config* out, uint8_t theme_max) {
   *out = c;
   return CfgError::Ok;
 }
+
+size_t cfg_serialize(const Config& cfg, char* out, size_t cap) {
+  if (out == nullptr || cap == 0) return 0;
+  out[0] = '\0';
+
+  JsonDocument doc;
+  doc["v"] = CFG_SCHEMA_VERSION;
+  doc["location"] = cfg.location;
+  doc["theme"] = cfg.theme;
+  JsonArray ws = doc["watches"].to<JsonArray>();
+  for (uint8_t i = 0; i < cfg.n_watches; i++) {
+    JsonObject w = ws.add<JsonObject>();
+    w["label"] = cfg.watches[i].label;
+    w["stop_code"] = cfg.watches[i].stop_code;
+    w["route_short_name"] = cfg.watches[i].route_short_name;
+    w["toward_stop_code"] = cfg.watches[i].toward_stop_code;
+    w["enabled"] = cfg.watches[i].enabled;
+  }
+
+  // measureJson excludes the NUL, serializeJson needs room for it.
+  if (measureJson(doc) + 1 > cap) return 0;
+  return serializeJson(doc, out, cap);
+}
+
+uint8_t cfg_publish(const Config& cfg, WatchConfig out[MAX_WATCHES]) {
+  uint8_t n = 0;
+  for (uint8_t i = 0; i < cfg.n_watches && n < MAX_WATCHES; i++) {
+    if (!cfg.watches[i].enabled) continue;
+    out[n].label = cfg.watches[i].label;
+    out[n].stop_code = cfg.watches[i].stop_code;
+    out[n].route_short_name = cfg.watches[i].route_short_name;
+    out[n].toward_stop_code = cfg.watches[i].toward_stop_code;
+    n++;
+  }
+  return n;
+}
