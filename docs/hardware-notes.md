@@ -109,6 +109,7 @@ SPI at 27 MHz (the default set in `platformio.ini`):
 
 | Measurement | Value |
 |---|---|
+| SPI clock | 27 MHz |
 | **Worst draw time per frame** | **59 ms** |
 | Frame rate (all scenes) | 14.9–15.1 fps |
 | **Lowest heap (min-ever)** | **311,588 bytes** |
@@ -128,8 +129,8 @@ for when WiFi and TLS run alongside.
 
 ### Double-precision sin() is software on this chip
 
-The first measurement on 2026-09-18 showed the Ghibli theme at 96 ms per frame
-(10.3 fps) in the 1–2 lane scenes, while transit averaged 54–57 ms. The cause:
+The first measurement on 2026-09-19 showed the Ghibli theme at 96 ms per frame
+(10.3 fps) in the 1–2 lane scenes, while transit ran at 54–57 ms. The cause:
 `hill()` and `shore()` call `sin()` on doubles, and the ESP32's FPU is
 single-precision only, so those calls are emulated in software. The band
 renderer redraws each lane once per band, which meant about 3,000 software
