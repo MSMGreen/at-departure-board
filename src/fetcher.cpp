@@ -443,6 +443,14 @@ bool anything_soon(int64_t now) {
   return false;
 }
 
+// The cadence the board would be polling at if nothing were wrong. This is what
+// gets published, never the backed-off pacing: poll_interval_s exists so that a
+// normal two-minute gap does not read as stale, not to record how badly
+// fetching is going. Publishing the backoff would hide a total outage for
+// longer the worse it got - stale data that does not look stale, which is the
+// one failure spec 8 is written against.
+int32_t nominal_interval(int64_t now) { return anything_soon(now) ? RT_FAST_S : RT_SLOW_S; }
+
 void log_states() {
   for (int i = 0; i < g_work.n_watches; i++) {
     if (g_work.watches[i].state == g_logged[i]) continue;
@@ -500,10 +508,13 @@ void task(void*) {
     const bool clock_ok = wifi && ensure_time();
     if (!clock_ok) {
       // Nothing can be fetched and nothing is claimed: the last good snapshot
-      // stays up and goes stale on its own.
-      g_work.poll_interval_s = NO_LINK_RETRY_S;
+      // stays up and goes stale on its own, at the nominal rate. time() is
+      // still the right clock here - it only stops being trustworthy before
+      // the first sync, and then there are no rows to age anyway.
+      const int64_t now = time(nullptr);
+      g_work.poll_interval_s = nominal_interval(now);
       publish();
-      log_pass(wifi, false, 0, NO_LINK_RETRY_S);
+      log_pass(wifi, false, now, NO_LINK_RETRY_S);
       vTaskDelay(pdMS_TO_TICKS(NO_LINK_RETRY_S * 1000));
       continue;
     }
@@ -530,22 +541,24 @@ void task(void*) {
     // 30 s while something is close, 2 minutes otherwise; doubling to a
     // 5 minute cap on 429, 5xx or a transport error, with the last good data
     // left exactly where it was (spec 8).
-    const int32_t base = anything_soon(now) ? RT_FAST_S : RT_SLOW_S;
-    int32_t interval;
+    const int32_t base = nominal_interval(now);
+    int32_t pace;
     if (g_pass.backoff) {
       const int32_t prev = g_backoff > 0 ? g_backoff : base;
       g_backoff = prev > BACKOFF_CAP_S / 2 ? BACKOFF_CAP_S : prev * 2;
-      interval = g_backoff;
+      pace = g_backoff;
     } else {
       g_backoff = 0;
-      interval = base;
+      pace = base;
     }
 
-    g_work.poll_interval_s = interval;
+    // The backoff paces this task; it is never published. Staleness grows from
+    // the last success at the nominal rate however far the backoff stretches.
+    g_work.poll_interval_s = base;
     publish();
     log_states();
-    log_pass(true, true, now, interval);
-    vTaskDelay(pdMS_TO_TICKS(static_cast<uint32_t>(interval) * 1000));
+    log_pass(true, true, now, pace);  // the log shows the real pacing
+    vTaskDelay(pdMS_TO_TICKS(static_cast<uint32_t>(pace) * 1000));
   }
 }
 
