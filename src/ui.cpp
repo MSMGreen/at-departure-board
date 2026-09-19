@@ -131,9 +131,9 @@ void scenery_ghibli(Painter& p, int x0, int y0, int x1, int y1, Kind kind, uint3
   const Rgb land = shade(card, 0.72);  // hills sit BELOW the ground
   const int base = y1 - 14;
   if (kind == Kind::Bus) {
-    for (int x = x0 + 6; x < x1 - 6; x++) p.vline(x, base - hill(x - x0), base, land);
+    for (int x = x0 + 6; x < x1 - 6; x++) p.vline(x, base - hill_at(x - x0), base, land);
   } else {
-    for (int x = x0 + 6; x < x1 - 6; x++) p.vline(x, base - shore(x - x0), base, land);
+    for (int x = x0 + 6; x < x1 - 6; x++) p.vline(x, base - shore_at(x - x0), base, land);
     for (int k = 0; k < 6; k++)  // moon path on the water
       p.hline(x0 + 40 + k * 30, x0 + 52 + k * 30, base - 2, bright(card, 1.0, 26));
   }

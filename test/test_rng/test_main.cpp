@@ -53,6 +53,13 @@ void test_shore_matches_python() {
   TEST_ASSERT_EQUAL_INT(1, shore(300));
 }
 
+void test_terrain_tables_equal_the_direct_functions() {
+  for (int dx = -5; dx < TERRAIN_DX_MAX + 5; dx++) {
+    TEST_ASSERT_EQUAL_INT_MESSAGE(hill(dx), hill_at(dx), "hill");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(shore(dx), shore_at(dx), "shore");
+  }
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_next_matches_python);
@@ -62,5 +69,6 @@ int main(int, char**) {
   RUN_TEST(test_same_seed_same_sequence);
   RUN_TEST(test_hill_matches_python);
   RUN_TEST(test_shore_matches_python);
+  RUN_TEST(test_terrain_tables_equal_the_direct_functions);
   return UNITY_END();
 }
