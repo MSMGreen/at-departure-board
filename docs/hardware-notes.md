@@ -167,6 +167,20 @@ The standard ESP32 idiom — `deserializeJson(doc, http.getStream())` — reads
 `DeserializationError::Ok`. The document is a number, `doc["data"]` is null, and
 the board shows **zero departures with no error, forever**.
 
+The silent failure happens specifically **when parsing with an ArduinoJson
+filter**, which the firmware always does (to keep the document small). With
+ArduinoJson 7.4.3, measured across all three combinations:
+
+| Parse | Body | Result |
+|---|---|---|
+| filtered | chunked | `Ok`, 0 rows — **silent** |
+| filtered | clean (de-chunked) | `Ok`, 1 row |
+| unfiltered | chunked | `InvalidInput` — loud |
+
+Filtering is what turns a loud failure into a silent one: without a filter the
+chunk-size token derails the parse enough to be rejected outright; with a
+filter it's accepted as a lone number and the empty result looks like success.
+
 Measured on hardware, same URL, same filter, back to back:
 
 ```
@@ -175,8 +189,10 @@ B. with de-chunking:     deserializeJson SUCCESS, 19 departures
 ```
 
 19 matches what `curl` returns for that URL. The fix is a small Stream wrapper
-that unwraps chunk framing while keeping memory flat — see
-`spike/heap/src/stage3.cpp` for a working implementation.
+that unwraps chunk framing while keeping memory flat — it now lives in
+`lib/core/src/dechunk.{h,cpp}`. `test/test_dechunk` pins both the bug (filtered
++ chunked without the wrapper) and the cure (filtered + chunked through it), so
+neither regresses silently again.
 
 ### But the two AT APIs differ — branch, never assume
 
@@ -232,9 +248,62 @@ behaviour the firmware needs. Lowest heap across the whole pass: **151,032**.
 Those delays are live: a train 52 s early and another 66 s late. Schedule alone
 would have been wrong by over a minute in both directions.
 
+## Live data on the board
+
+Measured on the board on 2026-09-19, SPI at 27 MHz, WiFi and TLS live against
+the real AT API:
+
+| Measurement | Value |
+|---|---|
+| Frame rate | 15.1–15.2 fps |
+| Worst draw time per frame | 55–57 ms (against a 66 ms budget) |
+| Lowest heap (min-ever) | 94,944 bytes |
+| Largest contiguous block | 94,196 bytes |
+| Steady-state free heap | ~157 KB |
+| Fetch task stack (core 0, 16,384 B) | 12,200 B free high-water mark — 4,184 B used at peak (16,384 − 12,200); the task performs the TLS handshakes, so this peak includes them |
+| Live build flash | 75.6% (~990 KB of 1.31 MB) |
+| Live build RAM | 25.8% |
+| Demo build flash | 26.7% |
+
+SPI stayed at 27 MHz: 15 fps held with the network running, so the 40 MHz
+headroom noted above was not needed.
+
+The lowest heap seen anywhere in this plan was **149,444 bytes**, during a TLS
+handshake in `setup()` (the earlier self-check) — lower than the 157 KB
+steady-state figure above but well clear of the ~95 KB floor seen during a live
+fetch.
+
+### TLS: the pinned root, and why the root
+
+The board pins **DigiCert Global Root G2**, SHA256
+`CB:3C:CB:B7:60:31:E5:E0:13:8F:8D:D3:9A:23:F9:DE:47:FF:C3:5E:43:C1:14:4C:EA:27:D4:6A:5A:B1:CB:5F`,
+valid to 2038. The root is pinned rather than the leaf because the leaf
+certificate expires in March 2027 — pinning it would mean the board silently
+stops trusting AT's API a year from now. The root is stable for over a decade.
+
+### NZ time rules live outside the standard library
+
+Windows' UCRT (used for `pio test -e native`) mis-handles the POSIX TZ string:
+it placed 2026-09-28 12:00 NZDT at 11:00 UTC, an hour wrong. So the NZ
+DST rules are hand-implemented in `lib/core/src/nztime.cpp` rather than left to
+the C library's TZ parsing.
+
+### Flash headroom
+
+Flash is at 75.6% for the live build. The portal (spec §3, not yet built) will
+likely need `huge_app.csv` rather than the default partition table.
+
+### First boot needs a wait for WiFi association
+
+The first fetch attempt on first boot returned HTTP `-1` for both lookups: it
+ran before WiFi association had completed. It succeeded once the code was
+changed to wait for association rather than just for `WiFi.begin()` to
+return.
+
 ## Still to verify on hardware
 
-- TLS with certificate pinning. The spike used `setInsecure()`, which is fine for
-  a measurement and **must not** become the shipped behaviour.
-- PWM dimming driven by the app (the LEDC path itself is verified), and
-  whether the frame rate holds with WiFi and TLS running alongside.
+- PWM dimming driven by the app (the LEDC path itself is verified).
+- The WiFi-outage path: pull WiFi, expect `stale Nm` with the last good data
+  kept, the lanes dimmed and the vehicles still animating, then recovery without a reboot when
+  WiFi returns. This has **not** been performed on hardware. The code paths
+  were reviewed but not observed running.

@@ -5,38 +5,42 @@
 
 // tools/board/scenes.py, in order. DEMO_MODE plays these.
 static const Scene SCENE_DATA[] = {
-    {"single", "17:42", 0, false, 1, {
-        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, 2, {{240, true, false}, {1020, false, false}}},
+    {"single", "17:42", "Kingsland", 0, false, 1, {
+        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, nullptr, 2, {{240, true, false}, {1020, false, false}}},
     }},
-    {"two_up", "17:42", 0, false, 2, {
-        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, 2, {{240, true, false}, {1020, false, false}}},
-        {"E-W", "to Britomart", Kind::Train, "97C93D", 2, {{420, true, false}, {1320, true, false}}},
+    {"two_up", "17:42", "Kingsland", 0, false, 2, {
+        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, nullptr, 2, {{240, true, false}, {1020, false, false}}},
+        {"E-W", "to Britomart", Kind::Train, "97C93D", nullptr, 2, {{420, true, false}, {1320, true, false}}},
     }},
-    {"four_up", "17:42", 0, false, 4, {
-        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, 2, {{240, true, false}, {1020, false, false}}},
-        {"E-W", "to Britomart", Kind::Train, "97C93D", 2, {{420, true, false}, {1320, true, false}}},
-        {"22R", "to City Centre", Kind::Bus, nullptr, 2, {{660, true, false}, {1860, false, false}}},
-        {"O-W", "to Onehunga", Kind::Train, "00AEEF", 2, {{1140, false, false}, {2940, false, false}}},
+    {"four_up", "17:42", "Kingsland", 0, false, 4, {
+        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, nullptr, 2, {{240, true, false}, {1020, false, false}}},
+        {"E-W", "to Britomart", Kind::Train, "97C93D", nullptr, 2, {{420, true, false}, {1320, true, false}}},
+        {"22R", "to City Centre", Kind::Bus, nullptr, nullptr, 2, {{660, true, false}, {1860, false, false}}},
+        {"O-W", "to Onehunga", Kind::Train, "00AEEF", nullptr, 2, {{1140, false, false}, {2940, false, false}}},
     }},
-    {"stale", "17:46", 240, false, 2, {
-        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, 2, {{240, true, false}, {1020, false, false}}},
-        {"E-W", "to Britomart", Kind::Train, "97C93D", 2, {{420, true, false}, {1320, true, false}}},
+    {"stale", "17:46", "Kingsland", 240, true, 2, {
+        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, nullptr, 2, {{240, true, false}, {1020, false, false}}},
+        {"E-W", "to Britomart", Kind::Train, "97C93D", nullptr, 2, {{420, true, false}, {1320, true, false}}},
     }},
-    {"arriving", "17:45", 0, false, 2, {
-        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, 2, {{15, true, false}, {1020, false, false}}},
-        {"E-W", "to Britomart", Kind::Train, "97C93D", 2, {{420, true, false}, {1320, true, false}}},
+    {"arriving", "17:45", "Kingsland", 0, false, 2, {
+        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, nullptr, 2, {{15, true, false}, {1020, false, false}}},
+        {"E-W", "to Britomart", Kind::Train, "97C93D", nullptr, 2, {{420, true, false}, {1320, true, false}}},
     }},
-    {"cancelled", "17:42", 0, false, 2, {
-        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, 2, {{300, true, true}, {1200, true, false}}},
-        {"E-W", "to Britomart", Kind::Train, "97C93D", 2, {{420, true, false}, {1320, true, false}}},
+    {"cancelled", "17:42", "Kingsland", 0, false, 2, {
+        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, nullptr, 2, {{300, true, true}, {1200, true, false}}},
+        {"E-W", "to Britomart", Kind::Train, "97C93D", nullptr, 2, {{420, true, false}, {1320, true, false}}},
     }},
-    {"empty", "01:12", 0, false, 2, {
-        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, 0, {}},
-        {"E-W", "to Britomart", Kind::Train, "97C93D", 0, {}},
+    {"empty", "01:12", "Kingsland", 0, false, 2, {
+        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, nullptr, 0, {}},
+        {"E-W", "to Britomart", Kind::Train, "97C93D", nullptr, 0, {}},
     }},
-    {"dimmed", "22:30", 0, true, 2, {
-        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, 2, {{240, true, false}, {1020, false, false}}},
-        {"E-W", "to Britomart", Kind::Train, "97C93D", 2, {{420, true, false}, {1320, true, false}}},
+    {"dimmed", "22:30", "Kingsland", 0, true, 2, {
+        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, nullptr, 2, {{240, true, false}, {1020, false, false}}},
+        {"E-W", "to Britomart", Kind::Train, "97C93D", nullptr, 2, {{420, true, false}, {1320, true, false}}},
+    }},
+    {"check_config", "17:42", "Kingsland", 0, false, 2, {
+        {"20", "to Wynyard Quarter", Kind::Bus, nullptr, "check config", 2, {{240, true, false}, {1020, false, false}}},
+        {"E-W", "to Britomart", Kind::Train, "97C93D", nullptr, 1, {{420, true, false}}},
     }},
 };
-#define SCENE_DATA_COUNT 8
+#define SCENE_DATA_COUNT 9

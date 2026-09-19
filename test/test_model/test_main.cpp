@@ -65,6 +65,23 @@ void test_stale_only_after_ninety_seconds() {
   TEST_ASSERT_TRUE(b.is_stale());
 }
 
+void test_message_and_location_round_trip_and_truncate() {
+  Watch w;
+  watch_init(&w, "20", "x", Kind::Bus, nullptr);
+  TEST_ASSERT_EQUAL_STRING("", w.message);
+  watch_set_message(&w, "check config");
+  TEST_ASSERT_EQUAL_STRING("check config", w.message);
+  watch_set_message(&w, nullptr);
+  TEST_ASSERT_EQUAL_STRING("", w.message);
+  watch_set_message(&w, "a message far longer than the thirty-two bytes we keep for it");
+  TEST_ASSERT_EQUAL_size_t(sizeof w.message - 1, strlen(w.message));
+
+  Board b;
+  memset(&b, 0, sizeof b);
+  board_set_location(&b, "Kingsland");
+  TEST_ASSERT_EQUAL_STRING("Kingsland", b.location);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_next_and_following);
@@ -73,5 +90,6 @@ int main(int, char**) {
   RUN_TEST(test_watch_init_parses_route_colour_and_rejects_black);
   RUN_TEST(test_watch_init_truncates_long_text_safely);
   RUN_TEST(test_stale_only_after_ninety_seconds);
+  RUN_TEST(test_message_and_location_round_trip_and_truncate);
   return UNITY_END();
 }

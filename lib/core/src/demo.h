@@ -18,6 +18,7 @@ struct SceneWatch {
   const char* headsign;
   Kind kind;
   const char* route_color;  // may be null
+  const char* message;  // may be null
   uint8_t n_deps;
   SceneDeparture deps[MAX_DEPARTURES];
 };
@@ -25,6 +26,7 @@ struct SceneWatch {
 struct Scene {
   const char* name;
   const char* clock;
+  const char* location;
   int32_t stale_s;
   bool dimmed;
   uint8_t n_watches;

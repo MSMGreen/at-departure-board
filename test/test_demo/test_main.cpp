@@ -6,10 +6,11 @@ void setUp() {}
 void tearDown() {}
 
 void test_all_scenes_present_in_python_order() {
-  TEST_ASSERT_EQUAL_INT(8, demo_scene_count());
+  TEST_ASSERT_EQUAL_INT(9, demo_scene_count());
   TEST_ASSERT_EQUAL_STRING("single", demo_scene(0).name);
   TEST_ASSERT_EQUAL_STRING("arriving", demo_scene(4).name);
   TEST_ASSERT_EQUAL_STRING("dimmed", demo_scene(7).name);
+  TEST_ASSERT_EQUAL_STRING("check_config", demo_scene(8).name);
 }
 
 void test_boot_shows_first_scene_in_first_theme() {
@@ -62,11 +63,18 @@ void test_rail_route_colour_survives_the_round_trip() {
 }
 
 void test_theme_advances_after_every_scene_has_played() {
-  const uint32_t cycle = 8 * DEMO_SCENE_MS;
+  const uint32_t cycle = demo_scene_count() * DEMO_SCENE_MS;
   TEST_ASSERT_EQUAL_UINT8(0, demo_board(cycle - 1).theme);
   TEST_ASSERT_EQUAL_UINT8(1, demo_board(cycle).theme);
   TEST_ASSERT_EQUAL_UINT8(0, demo_board(2 * cycle).theme);
   TEST_ASSERT_EQUAL_UINT8(1, demo_board(cycle).n_watches);  // scene 0 again
+}
+
+void test_the_check_config_scene_carries_its_message_and_location() {
+  const Board b = demo_board(8 * DEMO_SCENE_MS);
+  TEST_ASSERT_EQUAL_STRING("check config", b.watches[0].message);
+  TEST_ASSERT_EQUAL_STRING("", b.watches[1].message);
+  TEST_ASSERT_EQUAL_STRING("Kingsland", b.location);
 }
 
 int main(int, char**) {
@@ -78,5 +86,6 @@ int main(int, char**) {
   RUN_TEST(test_states_carry_through);
   RUN_TEST(test_rail_route_colour_survives_the_round_trip);
   RUN_TEST(test_theme_advances_after_every_scene_has_played);
+  RUN_TEST(test_the_check_config_scene_carries_its_message_and_location);
   return UNITY_END();
 }

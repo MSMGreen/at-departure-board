@@ -174,15 +174,15 @@ def render_scenes_header():
         "static const Scene SCENE_DATA[] = {",
     ]
     for name, board in scenes.SCENES.items():
-        parts.append(f"    {{{_cstr(name)}, {_cstr(board.clock)}, {board.stale_s}, "
-                     f"{_bool(board.dimmed)}, {len(board.watches)}, {{")
+        parts.append(f"    {{{_cstr(name)}, {_cstr(board.clock)}, {_cstr(board.location)}, "
+                     f"{board.stale_s}, {_bool(board.dimmed)}, {len(board.watches)}, {{")
         for w in board.watches:
             if len(w.departures) > MAX_DEPARTURES:
                 raise ValueError(f"scene {name!r}: more than {MAX_DEPARTURES} departures")
             deps = ", ".join(f"{{{d.eta_s}, {_bool(d.live)}, {_bool(d.cancelled)}}}"
                              for d in w.departures)
             parts.append(f"        {{{_cstr(w.badge)}, {_cstr(w.headsign)}, "
-                         f"{KIND_CONST[w.kind]}, {_cstr(w.route_color)}, "
+                         f"{KIND_CONST[w.kind]}, {_cstr(w.route_color)}, {_cstr(w.message)}, "
                          f"{len(w.departures)}, {{{deps}}}}},")
         parts.append("    }},")
     parts += ["};", f"#define SCENE_DATA_COUNT {len(scenes.SCENES)}"]

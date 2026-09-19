@@ -48,7 +48,7 @@ def _mins(eta_s):
 def _status_bar(d, board, th):
     d.rectangle((0, 0, layout.W, layout.STATUS_H), fill=th.colour("panel"))
     mid = layout.STATUS_H / 2
-    d.text((6, mid), "Kingsland", font=reg(11), fill=th.colour("dim"), anchor="lm")
+    d.text((6, mid), board.location, font=reg(11), fill=th.colour("dim"), anchor="lm")
     d.text((layout.W - 6, mid), board.clock, font=mono(12),
            fill=th.colour("text"), anchor="rm")
 
@@ -73,7 +73,9 @@ def _lane(d, ln, watch, t, index, th, size):
         th.scenery(d, (ln.rect.x0 + 8, ln.rect.y0, ln.rect.x1 - 8, ln.rect.y1),
                    watch.kind, 7 + index, th, card)
 
-    nxt = watch.next
+    # A watch carrying a message must not show a time, however many
+    # departures it happens to hold.
+    nxt = None if watch.message else watch.next
     colour = th.badge_colour(watch.kind, watch.route_color)
     sprite = th.sprite(size, watch.kind)
 
@@ -90,7 +92,11 @@ def _lane(d, ln, watch, t, index, th, size):
            fill=th.colour("dim"))
 
     # times
-    if nxt is None:
+    if watch.message:
+        d.text(ln.minutes_xy, "--", font=mono(20), fill=th.colour("dim"), anchor="ra")
+        d.text(ln.following_xy, watch.message, font=reg(9),
+               fill=th.colour("warn"), anchor="ra")
+    elif nxt is None:
         d.text(ln.minutes_xy, "--", font=mono(20), fill=th.colour("dim"), anchor="ra")
         d.text(ln.following_xy, "none tonight", font=reg(9),
                fill=th.colour("dim"), anchor="ra")

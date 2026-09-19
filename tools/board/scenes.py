@@ -37,8 +37,9 @@ SCENES = {
         Watch(departures=[Departure(1140), Departure(2940)], **ONEHUNGA),
     ], "17:42"),
 
-    # WiFi has been gone for four minutes. Data stays up, marked.
-    "stale": Board(_two(), "17:46", stale_s=240),
+    # WiFi has been gone for four minutes. Data stays up, marked and dimmed
+    # (spec 8), exactly as build_board draws it on the firmware.
+    "stale": Board(_two(), "17:46", stale_s=240, dimmed=True),
 
     # Seven minutes early is real: observed delay was -427s.
     "arriving": Board([
@@ -59,4 +60,12 @@ SCENES = {
     ], "01:12"),
 
     "dimmed": Board(_two(), "22:30", dimmed=True),
+
+    # Direction could not be derived (spec 3a). The departures are deliberately
+    # present: a watch that cannot prove its direction must show none of them.
+    "check_config": Board([
+        Watch(departures=[Departure(240, live=True), Departure(1020)],
+              message="check config", **BUS20),
+        Watch(departures=[Departure(420, live=True)], **TRAIN),
+    ], "17:42"),
 }

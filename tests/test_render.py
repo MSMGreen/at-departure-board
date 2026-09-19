@@ -131,3 +131,24 @@ def test_every_theme_renders_at_every_lane_count(theme, n):
     b = Board([Watch("20", "to town", "bus" if i % 2 == 0 else "train",
                      [Departure(240 * (i + 1))]) for i in range(n)], "17:42")
     assert render.render(b, theme=themes.get(theme)).size == (320, 240)
+
+
+def test_a_watch_with_a_message_never_shows_a_time():
+    # Spec 3a: a watch that cannot prove which way it points must not display
+    # a time. Rendering must therefore ignore departures entirely.
+    with_deps = Board([Watch(departures=[Departure(240, live=True)],
+                             message="check config", **scenes.BUS20)], "17:42")
+    without = Board([Watch(departures=[], message="check config", **scenes.BUS20)], "17:42")
+    assert render.render(with_deps, t=0.0).tobytes() == render.render(without, t=0.0).tobytes()
+
+
+def test_the_message_is_actually_drawn():
+    plain = Board([Watch(departures=[], **scenes.BUS20)], "17:42")
+    noisy = Board([Watch(departures=[], message="check config", **scenes.BUS20)], "17:42")
+    assert render.render(plain, t=0.0).tobytes() != render.render(noisy, t=0.0).tobytes()
+
+
+def test_the_location_is_drawn_in_the_status_bar():
+    here = Board([Watch(departures=[], **scenes.BUS20)], "17:42")
+    there = Board([Watch(departures=[], **scenes.BUS20)], "17:42", location="Ponsonby")
+    assert render.render(here, t=0.0).tobytes() != render.render(there, t=0.0).tobytes()

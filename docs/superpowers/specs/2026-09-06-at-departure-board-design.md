@@ -4,7 +4,9 @@ An ESP32 + 2.8" TFT that shows when the next bus and train actually leave,
 using Auckland Transport's realtime feed. Designed to be built by someone else
 from the repo.
 
-Status: approved design, ready for an implementation plan.
+Status: §5 (data flow), §6 (stop code resolution) and §3a (derived direction)
+are implemented and running on hardware with live data. §3 (setup portal, NVS
+config) and §8's dimming and quiet hours are not yet built.
 Date: 2026-09-06.
 
 ## 1. What it does

@@ -52,3 +52,11 @@ def test_board_rejects_more_than_four_watches():
 def test_board_rejects_zero_watches():
     with pytest.raises(ValueError):
         Board([], "17:42")
+
+
+def test_a_watch_has_no_message_by_default():
+    assert Watch(badge="20", headsign="x", kind="bus").message is None
+
+
+def test_a_board_defaults_to_the_kingsland_location():
+    assert Board([Watch(badge="20", headsign="x", kind="bus")], "17:42").location == "Kingsland"

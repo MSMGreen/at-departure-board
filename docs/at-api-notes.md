@@ -78,19 +78,48 @@ Therefore: **never treat a 404 from `stoptrips` as a stale/invalid stop_id.**
 Only a 404 from `GET /stops/{id}` means the id has gone stale. Conflating them
 makes the board re-resolve every stop every night.
 
-### The window does not cross midnight
+### After-midnight services belong to the previous service date
+
+**Correction (2026-09-19).** An earlier version of this section was headed "The
+window does not cross midnight" and said `hour_range` is clamped to the service
+day, so a window spanning midnight needed a second request against the next
+date. **That was a misreading.** It rested on this, from a Sunday:
 
 ```
 8213, hour 23, range 1 -> 4 rows
-8213, hour 23, range 6 -> 4 rows   (identical; clamped at end of service day)
+8213, hour 23, range 6 -> 4 rows
 ```
 
-`hour_range` is clamped to the service day. A window spanning midnight needs a
-second request with `filter[date]` set to the following day. `hour_range` itself
-accepts at least 6 and scales linearly (hour 17: range 1→8 rows, 6→44 rows).
+Those are identical only because stop 8213 has no late service on a Sunday.
+Nothing was being clamped. Verified live on Saturday night 2026-09-19 against
+Kingsland `122-34ecc043`:
 
-`departure_time` > `24:00:00` is legal GTFS for after-midnight services. **Not
-observed** in these samples — parse tolerantly anyway, don't rely on it.
+| query | result |
+|---|---|
+| `date=2026-09-19&start_hour=23&hour_range=3` | 200, 19 rows, `23:04` … **`25:25`** |
+| `date=2026-09-19&start_hour=24&hour_range=2` | 200, 11 rows, `24:04` … `25:25` |
+| `date=2026-09-20` (no start_hour) | 404 |
+
+So:
+
+- After-midnight trains **exist**, and are filed under the **previous** service
+  date with `departure_time` of `24:xx` and `25:xx` (legal GTFS). 00:04 on the
+  20th is `24:04:00` on service date 2026-09-19.
+- `hour_range` is **not** clamped at midnight: hour 23 for 3 hours runs to 25:25
+  on the same date.
+- `start_hour` **accepts 24** and above. Only 0 is rejected (see below).
+
+What the board does (`schedule_windows`): from 04:00, one request
+`{today, hour, 3}`. In the small hours (00:00–03:59), two: yesterday's late
+services `{yesterday, 24 + hour, 3}`, and today's `{today, max(hour, 1), 3}`.
+A second request against the next date is never needed.
+
+Fixture: `test/fixtures/post-crl/stoptrips_kingsland_after_midnight.json` (the
+`start_hour=24&hour_range=2` answer: 11 rows, service_date 2026-09-19, first
+`24:04:00`).
+
+`hour_range` itself accepts at least 6 and scales linearly (hour 17: range 1→8
+rows, 6→44 rows).
 
 ## Realtime
 
@@ -300,3 +329,63 @@ Verified targets for this project:
 
 Keep the resolved `direction_id` as a cache, never as the source of truth, and
 re-derive it whenever the schedule is refetched.
+
+---
+
+# One station, two lines: direction is per route
+
+Discovered while building the firmware data-path plan, against the live API on
+2026-09-19. Kingsland is served by **two** rail lines, not one:
+
+| route_id | via | reaches Waitematā? |
+|---|---|---|
+| `E-W-201` (Swanson↔Manukau) | Waitematā | yes |
+| `O-W-201` (Henderson↔Onehunga) | Newmarket: Kingsland → Maungawhau → Grafton → Newmarket → … → Onehunga | no |
+
+Only `E-W-201` reaches Waitematā. Taking **one candidate trip per
+`direction_id`** (as §3a originally read) can pick an `O-W-201` trip for both
+directions, and on 2026-09-19 it did — checking only those two trips against
+`toward_stop_code=133` found nothing and wrongly concluded that no direction at
+Kingsland serves Waitematā.
+
+The spec's own §3a sentence already said the right thing: "Direction is a
+property of `(route_id, direction_id)`, not of an individual trip." The bug was
+in not deriving it per route. Every `(route_id, direction_id)` pair actually
+running at the stop must be checked, not just one trip per `direction_id`.
+
+On hardware the board now logs, for stop 122:
+
+```
+dirs 122: O-W-201/0 no  O-W-201/1 no  E-W-201/0 no  E-W-201/1 yes -> ok
+```
+
+## Realtime only reports trips already in progress
+
+Asking `/realtime/legacy/tripupdates?tripid=...` about trips that haven't
+started yet returns **fewer entities than ids requested** — the trip simply
+isn't in the feed until it's under way. That's normal, not an error; the client
+should not treat a short entity list as a fetch failure.
+
+## Post-CRL fixtures (2026-09-19)
+
+Re-verified against the live API on 2026-09-19, with new fixtures in
+`test/fixtures/post-crl/`:
+
+- `filter[start_hour]=0` is rejected: 400 `Invalid Request`, detail
+  `"Key: 'StopTripRequest.StartHour' Error:Field validation for 'StartHour'
+  failed on the 'required' tag"` (full body in
+  `test/fixtures/post-crl/stoptrips_start_hour_0.json`). The validator reports
+  hour 0 as *missing* (`required`), not out of range — this looks like a
+  zero-value check on AT's side (Go's `required` tag rejects the zero value),
+  not a range check, which is why hour 1 is accepted and hour 0 is not. Hour
+  24 and above is accepted too (see "After-midnight services belong to the
+  previous service date"): a 00:00–00:59 departure is fetched as yesterday's
+  `start_hour=24`, never as today's `start_hour=0`. The board allows 1..47.
+- An unknown stop code returns **200** `{"data":[]}`, not 404.
+- A bad subscription key returns **401** with a `statusCode`/`message` body.
+- `stops?filter[stop_code]` still resolves 8213/122/133/1060 to the same ids as
+  on 13 September — the hashes are unchanged.
+
+New fixtures, captured 2026-09-19: `test/fixtures/post-crl/stops_8213.json`,
+`stops_122.json`, `stops_133.json`, `stops_1060.json`, `stops_unknown.json`,
+`stoptrips_start_hour_0.json`.
