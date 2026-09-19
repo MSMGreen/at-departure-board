@@ -36,12 +36,18 @@ python tools/author_art.py               # regenerate the vehicle art
 Needs PlatformIO. Wiring is in the table below.
 
 ```bash
-pio test -e native          # firmware logic, on your PC (needs a C++ compiler)
-pio run -e esp32 -t upload  # first: hold BOOT, tap EN, release BOOT
+pio test -e native               # firmware logic, on your PC (needs a C++ compiler)
+pio run -e esp32 -t upload       # the live board: needs src/secrets.h (below)
+pio run -e esp32_demo -t upload  # the demo: no WiFi, no API key
 ```
 
-This build runs `DEMO_MODE`: every canonical state from the simulator, played
-in real time on the panel, no WiFi or API key needed.
+Before each upload: hold BOOT, tap EN, release BOOT.
+
+`esp32` is the **live** build: it fetches real departures, so it needs
+`src/secrets.h` with your WiFi credentials and AT API key (see the next
+section) and will not compile without it. `esp32_demo` runs `DEMO_MODE`: every
+canonical state from the simulator, played in real time on the panel, no WiFi
+or API key needed (it still needs a `src/secrets.h` to exist; see below).
 
 ## Point it at your own stops
 
@@ -61,7 +67,9 @@ that stops there. A stop served only by routes you'd actually board can leave
 `route_short_name` empty, as the train watch does.
 
 For a no-network demo of the same board, `pio run -e esp32_demo -t upload`
-builds with `DEMO_MODE` instead, no `secrets.h` or API key required.
+builds with `DEMO_MODE` instead: no WiFi or API key is used. The network
+sources are still compiled, so `src/secrets.h` must exist, but an unedited
+copy of `src/secrets.example.h` is enough.
 
 ## Development
 

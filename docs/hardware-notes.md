@@ -302,9 +302,8 @@ return.
 
 ## Still to verify on hardware
 
-- PWM dimming driven by the app (the LEDC path itself is verified), and
-  whether the frame rate holds with WiFi and TLS running alongside.
+- PWM dimming driven by the app (the LEDC path itself is verified).
 - The WiFi-outage path: pull WiFi, expect `stale Nm` with the last good data
-  kept and the vehicles still animating, then recovery without a reboot when
+  kept, the lanes dimmed and the vehicles still animating, then recovery without a reboot when
   WiFi returns. This has **not** been performed on hardware. The code paths
   were reviewed but not observed running.
