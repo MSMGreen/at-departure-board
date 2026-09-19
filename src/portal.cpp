@@ -11,6 +11,7 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
+#include <stdarg.h>
 
 #include "config.h"
 #include "theme.h"
@@ -18,6 +19,23 @@
 namespace {
 
 WebServer g_server(80);
+
+// Appends to json[0..cap) at *p via snprintf, refusing to let *p run past
+// the buffer. snprintf returns the length it WOULD have written, not what
+// fit, so an unchecked `p += snprintf(...)` can walk p past cap; the next
+// call's `cap - p` then underflows to a huge size_t and `json + p` points
+// out of bounds. Returns false (and leaves the buffer unusable) on a
+// negative/encoding-error return or on truncation.
+bool json_append(char* json, size_t cap, size_t* p, const char* fmt, ...) {
+  if (*p >= cap) return false;
+  va_list args;
+  va_start(args, fmt);
+  int n = vsnprintf(json + *p, cap - *p, fmt, args);
+  va_end(args);
+  if (n < 0 || static_cast<size_t>(n) >= cap - *p) return false;
+  *p += static_cast<size_t>(n);
+  return true;
+}
 
 void handle_config() {
   char json[CFG_JSON_CAP];
@@ -30,12 +48,18 @@ void handle_config() {
 
 void handle_themes() {
   char json[256];
-  size_t p = snprintf(json, sizeof json, "{\"selected\":%u,\"themes\":[",
-                      static_cast<unsigned>(config_theme()));
-  for (uint8_t i = 0; i < theme_count() && p < sizeof(json) - 2; i++) {
-    p += snprintf(json + p, sizeof(json) - p, "%s\"%s\"", i ? "," : "", theme(i).name);
+  size_t p = 0;
+  bool ok = json_append(json, sizeof json, &p, "{\"selected\":%u,\"themes\":[",
+                        static_cast<unsigned>(config_theme()));
+  for (uint8_t i = 0; ok && i < theme_count(); i++) {
+    ok = json_append(json, sizeof json, &p, "%s\"%s\"", i ? "," : "", theme(i).name);
   }
-  snprintf(json + p, sizeof(json) - p, "]}");
+  if (ok) ok = json_append(json, sizeof json, &p, "]}");
+
+  if (!ok) {
+    g_server.send(500, "application/json", "{\"error\":\"theme list too long\"}");
+    return;
+  }
   g_server.send(200, "application/json", json);
 }
 
