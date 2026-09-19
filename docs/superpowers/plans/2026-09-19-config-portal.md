@@ -30,7 +30,7 @@
 |---|---|---|
 | `lib/core/src/at_api.h/.cpp` | Add `stop_name` to `StopInfo` and its filter | Modify |
 | `lib/core/src/config_schema.h/.cpp` | `Config` type, parse, validate, compact, serialize. Pure. | Create |
-| `src/config.h/.cpp` | NVS load/store, the live instance, accessors | Create |
+| `src/config.h/.cpp` | NVS load/store, the live instance, accessors, and the relocated `N_WATCHES` compile-time guard | Create |
 | `src/portal.h/.cpp` | `WebServer`, its task, the endpoints | Create |
 | `src/portal_page.h` | The config page as one `PROGMEM` string | Create |
 | `src/watch_config.h` | Demoted to compiled defaults; content unchanged | Keep |
@@ -834,7 +834,18 @@ In `src/fetcher.cpp`, delete line 30 entirely:
 static_assert(N_WATCHES <= MAX_WATCHES, "watch_config declares more watches than a Snapshot holds");
 ```
 
-The count is no longer a compile-time constant. `cfg_parse` already rejects more than `MAX_WATCHES` (Task 2's `test_rejects_too_many_watches`), and `cfg_publish` clamps as well, so the invariant is still enforced — at the boundary rather than at compile time.
+It has to go from *here*: Step 2 removes `#include "watch_config.h"` from this file, so `N_WATCHES` is no longer even in scope.
+
+**It does not go away, though.** An earlier draft of this step claimed "the count is no longer a compile-time constant" and left it at that. That is wrong, and acting on it would have silently retired a real invariant: `N_WATCHES` is still `constexpr` (`src/watch_config.h:17`), and `seed_from_compiled_defaults()` in `src/config.cpp` still loops over it. Task 4 therefore **relocated** the guard rather than deleting it — `src/config.cpp` now carries:
+
+```c
+static_assert(N_WATCHES <= MAX_WATCHES,
+              "watch_config.h declares more watches than a Config can hold");
+```
+
+Verified to fire: adding a fifth watch to `watch_config.h` fails the build with that message. Do not add it back to `fetcher.cpp`.
+
+For the *runtime* path — config arriving from NVS rather than the header — the invariant is enforced at the boundary instead: `cfg_parse` rejects more than `MAX_WATCHES` (Task 2's `test_rejects_too_many_watches`) and `cfg_publish` clamps.
 
 - [ ] **Step 2: Swap the header and the reads in `fetcher.cpp`**
 
