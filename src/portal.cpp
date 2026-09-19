@@ -14,6 +14,8 @@
 #include <WebServer.h>
 #include <stdarg.h>
 
+#include "at_api.h"
+#include "at_client.h"
 #include "config.h"
 #include "theme.h"
 
@@ -90,12 +92,58 @@ void handle_set_theme() {
   g_server.send(200, "application/json", body);
 }
 
+void handle_check_stop() {
+  JsonDocument req;
+  if (deserializeJson(req, g_server.arg("plain"))) {
+    g_server.send(400, "application/json", "{\"error\":\"bad JSON\"}");
+    return;
+  }
+  const char* code = req["stop_code"] | "";
+  if (code[0] == '\0') {
+    g_server.send(400, "application/json", "{\"error\":\"stop_code is required\"}");
+    return;
+  }
+
+  char url[256];
+  if (!url_stop_by_code(url, sizeof url, code)) {
+    g_server.send(400, "application/json", "{\"error\":\"stop code is not usable in a URL\"}");
+    return;
+  }
+
+  JsonDocument filter;
+  stop_filter(filter);
+  JsonDocument doc;
+  const int status = at_get(url, doc, filter);
+  if (status != 200) {
+    char body[96];
+    snprintf(body, sizeof body, "{\"error\":\"AT returned %d\"}", status);
+    g_server.send(502, "application/json", body);
+    return;
+  }
+
+  StopInfo info{};
+  const bool found = parse_stop(doc, &info);
+  doc.clear();
+  if (!found) {
+    g_server.send(404, "application/json", "{\"error\":\"no stop with that code\"}");
+    return;
+  }
+
+  JsonDocument out;
+  out["stop_code"] = code;
+  out["stop_name"] = info.stop_name;
+  char body[192];
+  serializeJson(out, body, sizeof body);
+  g_server.send(200, "application/json", body);
+}
+
 void handle_not_found() { g_server.send(404, "text/plain", "not found"); }
 
 void portal_task(void*) {
   g_server.on("/api/config", HTTP_GET, handle_config);
   g_server.on("/api/themes", HTTP_GET, handle_themes);
   g_server.on("/api/theme", HTTP_POST, handle_set_theme);
+  g_server.on("/api/stop", HTTP_POST, handle_check_stop);
   g_server.onNotFound(handle_not_found);
   g_server.begin();
   Serial.println("portal: listening on :80");
