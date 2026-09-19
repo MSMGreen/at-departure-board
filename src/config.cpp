@@ -7,6 +7,9 @@
 #include "theme.h"
 #include "watch_config.h"
 
+static_assert(N_WATCHES <= MAX_WATCHES,
+              "watch_config.h declares more watches than a Config can hold");
+
 namespace {
 
 constexpr char NVS_NS[] = "board";
@@ -37,6 +40,27 @@ void seed_from_compiled_defaults() {
     c.n_watches++;
   }
   g_cfg = c;
+
+  // Route the compiled defaults through the same validator the JSON path
+  // uses. This cannot catch a field already truncated by strncpy above (that
+  // information is gone by now), but it does catch an empty stop_code, zero
+  // enabled watches, and a too-long location - the achievable part of
+  // reject-don't-truncate for a path that itself only truncates.
+  char json[CFG_JSON_CAP];
+  Config scratch{};
+  if (cfg_serialize(g_cfg, json, sizeof json) == 0) {
+    Serial.println(
+        "config: watch_config.h defaults failed to serialise - "
+        "watch_config.h is likely misconfigured");
+  } else {
+    const CfgError e = cfg_parse(json, &scratch, theme_count());
+    if (e != CfgError::Ok) {
+      Serial.printf(
+          "config: watch_config.h defaults fail validation (%s) - "
+          "watch_config.h is at fault\n",
+          cfg_error_text(e));
+    }
+  }
 }
 
 }  // namespace
