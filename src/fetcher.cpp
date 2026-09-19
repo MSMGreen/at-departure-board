@@ -35,6 +35,7 @@ constexpr int32_t RT_FAST_WITHIN_S = 30 * 60;
 constexpr int32_t BACKOFF_CAP_S = 300;
 constexpr int32_t NO_LINK_RETRY_S = 5;   // no WiFi or no clock yet
 constexpr int32_t RESOLVE_RETRY_S = 60;  // a 400/401 must not become a request storm
+constexpr int32_t SCHEDULE_RETRY_S = 60; // after an inconclusive refresh: soon, not every tick
 
 // --- buffer sizes -----------------------------------------------------------
 constexpr int MAX_SCHED_ROWS = 48;  // 3 hours at a busy stop, both windows
@@ -79,6 +80,7 @@ StopTripRow g_rows[MAX_SCHED_ROWS];
 // The (route, direction) pairs of the watch being refreshed. Shared across
 // watches like g_rows: they are only read inside the refresh that fills them.
 RouteDir g_pairs[MAX_ROUTE_DIRS];
+bool g_pair_failed[MAX_ROUTE_DIRS];  // its trips/{id}/stops did not answer 200
 char g_log[200];  // the "dirs" line: six pairs of up to ~26 characters
 TripStop g_stops[MAX_TRIP_STOPS];
 RtEntity g_ents[MAX_ENTITIES];
@@ -95,7 +97,11 @@ WatchState g_logged[MAX_WATCHES];
 
 // Folded over every request in a pass, to decide backoff and last_ok once.
 struct Pass {
-  bool any_ok;
+  // Set only by a conclusive schedule refresh or a realtime 200. A resolve or a
+  // rail lookup that happens to 200 is not news about departures, and an
+  // inconclusive refresh is not evidence of anything: counting either would let
+  // a board drain while it still looked fresh.
+  bool news;
   bool backoff;
 };
 Pass g_pass;
@@ -120,7 +126,6 @@ int get(void (*make_filter)(JsonDocument&)) {
   g_filter.clear();
   make_filter(g_filter);
   const int status = at_get(g_url, g_doc, g_filter);
-  if (status == 200) g_pass.any_ok = true;
   if (should_backoff(status)) g_pass.backoff = true;
   return status;
 }
@@ -202,6 +207,38 @@ const char* route_of(const char* trip_id, int n) {
   return nullptr;
 }
 
+// True when some row's (route, direction) did not make it into g_pairs, i.e.
+// collect_route_dirs really truncated rather than finding exactly six pairs.
+bool pair_cap_dropped(int n) {
+  for (int k = 0; k < n; k++) {
+    const StopTripRow& row = g_rows[k];
+    if (row.direction_id < 0 || row.direction_id > 1) continue;
+    bool found = false;
+    for (int p = 0; p < MAX_ROUTE_DIRS; p++) {
+      if (g_pairs[p].direction_id == row.direction_id &&
+          strcmp(g_pairs[p].route_id, row.route_id) == 0) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return true;
+  }
+  return false;
+}
+
+// "dirs 122: E-W-201/0 no  E-W-201/1 yes  O-W-201/1 err -> ok". A pair whose
+// probe failed says err, never no, so a partial failure shows on serial.
+void log_pairs(const char* stop_code, int n_pairs, const char* outcome) {
+  int p = 0;
+  for (int k = 0; k < n_pairs && p < static_cast<int>(sizeof g_log) - 1; k++) {
+    const char* said = g_pair_failed[k] ? "err" : g_pairs[k].serves ? "yes" : "no";
+    p += snprintf(g_log + p, sizeof g_log - p, "%s%s/%d %s", k == 0 ? "" : "  ",
+                  g_pairs[k].route_id, static_cast<int>(g_pairs[k].direction_id), said);
+  }
+  if (p == 0) snprintf(g_log, sizeof g_log, "none");
+  Serial.printf("dirs %s: %s -> %s\n", stop_code, g_log, outcome);
+}
+
 // --- the three loops --------------------------------------------------------
 
 // The rail route table, fetched once. It is what decides Kind, and it supplies
@@ -247,6 +284,9 @@ void resolve(int i, int64_t now) {
       status = AT_PARSE_ERROR;
     } else {
       status = get(routes_filter);
+      // A 400 here is a route short name AT will not accept - a config fault,
+      // not the stop-code filter being withdrawn. Map it to "check config".
+      if (status == 400) status = AT_EMPTY;
       if (status == 200) {
         const int n = parse_routes(g_doc, g_routes, 8);
         if (n == 0) {
@@ -316,16 +356,32 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
     const int status = get(stoptrips_filter);
     if (status == 404) {
       // "No services in this window" - the same status as an unknown stop, and
-      // never a reason to re-resolve one (spec 8, docs/at-api-notes.md).
-      g_pass.any_ok = true;
+      // never a reason to re-resolve one (spec 8, docs/at-api-notes.md). A
+      // real answer: it feeds a conclusive refresh like any 200.
       continue;
     }
     if (status == 401) {
       set_all(WatchState::CheckKey, now);
       return false;
     }
-    if (status != 200) return false;
+    if (status != 200) {
+      r.next_sched = now + SCHEDULE_RETRY_S;  // inconclusive: keep what we had
+      return false;
+    }
     n += parse_stoptrips(g_doc, g_rows + n, MAX_SCHED_ROWS - n);
+  }
+
+  if (r.n_routes > 0) {
+    // A pinned watch never shows another route's rows, so drop them before the
+    // pairs are collected: at a busy stop the pair cap would otherwise fill up
+    // with other routes and could squeeze out the one this watch is for.
+    int keep = 0;
+    for (int k = 0; k < n; k++) {
+      if (!route_wanted(r, g_rows[k].route_id)) continue;
+      if (keep != k) g_rows[keep] = g_rows[k];
+      keep++;
+    }
+    n = keep;
   }
 
   // Direction is derived every refresh and is a property of
@@ -334,23 +390,17 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
   // Onehunga via Newmarket. One candidate trip per direction_id asked about
   // O-W both ways and concluded the target was unreachable, while the trains
   // the board wanted were due. So probe every pair in the window.
-  int n_pairs = collect_route_dirs(g_rows, n, g_pairs, MAX_ROUTE_DIRS);
-  if (r.n_routes > 0) {
-    // A pinned watch has no business spending requests on, or being judged by,
-    // routes it will never show.
-    int keep = 0;
-    for (int p = 0; p < n_pairs; p++) {
-      if (!route_wanted(r, g_pairs[p].route_id)) continue;
-      if (keep != p) g_pairs[keep] = g_pairs[p];
-      keep++;
-    }
-    n_pairs = keep;
+  const int n_pairs = collect_route_dirs(g_rows, n, g_pairs, MAX_ROUTE_DIRS);
+  if (n_pairs == MAX_ROUTE_DIRS && pair_cap_dropped(n)) {
+    Serial.printf("dirs %s: pair cap reached\n", cfg.stop_code);
   }
 
   int probed = 0, failed = 0;
+  bool any_serves = false;
   for (int p = 0; p < n_pairs; p++) {
     RouteDir& pair = g_pairs[p];
     pair.serves = false;
+    g_pair_failed[p] = true;  // until a 200 says otherwise
     if (!url_trip_stops(g_url, sizeof g_url, pair.trip_id)) {
       failed++;
       continue;
@@ -364,24 +414,33 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
       failed++;  // serves stays false, and that is not proof of anything
       continue;
     }
+    g_pair_failed[p] = false;
     const int n_stops = parse_trip_stops(g_doc, g_stops, MAX_TRIP_STOPS);
     // Our stop here is the pair's own stop_id: a station's rows carry the
     // platform, and a trip's stop list contains platforms, not stations.
     pair.serves =
         trip_serves(g_stops, n_stops, pair.stop_id, cfg.toward_stop_code, r.target_stop_id);
+    if (pair.serves) any_serves = true;
     probed++;
   }
-  // Every probe failed: we know nothing this pass. Leave the watch's previous
-  // state and rows exactly as they were.
-  if (n_pairs > 0 && probed == 0) return false;
 
-  WatchState verdict = verdict_for_pairs(g_pairs, n_pairs);
-  if (verdict == WatchState::CheckConfig && failed > 0) {
-    // Incomplete evidence is not proof of a misconfiguration: the pair that
-    // failed to fetch may be the one that reaches the target.
-    verdict = WatchState::Ok;
+  // Inconclusive is not evidence. A refresh is conclusive only when every pair
+  // was probed, or when at least one pair proved it serves. Otherwise a failed
+  // pair may be the very one that reaches the target - at Kingsland, one 5xx on
+  // E-W/1 with three honest "no"s would read as "nothing goes your way". So
+  // leave the previous state and rows exactly as they are, do not count this
+  // as news, and come back in a minute rather than in fifteen.
+  if (failed > 0 && !any_serves) {
+    r.next_sched = now + SCHEDULE_RETRY_S;
+    log_pairs(cfg.stop_code, n_pairs, "inconclusive, kept previous");
+    Serial.printf("sched %s: parsed %d pairs %d probed %d failed %d -> kept %u rows\n",
+                  cfg.stop_code, n, n_pairs, probed, failed, static_cast<unsigned>(w.n_rows));
+    return false;
   }
 
+  // From here the answer is conclusive: every pair spoke, or one proved it
+  // serves (and a failed pair can then only be missing rows, never a lie).
+  const WatchState verdict = verdict_for_pairs(g_pairs, n_pairs);
   if (verdict != WatchState::Ok) {
     // A service runs both ways past this stop and neither way gets you there.
     // A watch that cannot prove which way it points must not show a time.
@@ -399,15 +458,9 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
   }
 
   r.next_sched = now + SCHEDULE_PERIOD_S;
-  int p = 0;
-  for (int k = 0; k < n_pairs && p < static_cast<int>(sizeof g_log) - 1; k++) {
-    p += snprintf(g_log + p, sizeof g_log - p, "%s%s/%d %s", k == 0 ? "" : "  ",
-                  g_pairs[k].route_id, static_cast<int>(g_pairs[k].direction_id),
-                  g_pairs[k].serves ? "yes" : "no");
-  }
-  if (p == 0) snprintf(g_log, sizeof g_log, "none");
+  g_pass.news = true;
   const char* m = state_message(w.state);
-  Serial.printf("dirs %s: %s -> %s\n", cfg.stop_code, g_log, m[0] != '\0' ? m : "ok");
+  log_pairs(cfg.stop_code, n_pairs, m[0] != '\0' ? m : "ok");
   Serial.printf("sched %s: parsed %d pairs %d probed %d failed %d -> %u rows\n", cfg.stop_code, n,
                 n_pairs, probed, failed, static_cast<unsigned>(w.n_rows));
   return true;
@@ -440,7 +493,7 @@ void refresh_realtime(int64_t now) {
   for (int i = 0; i < g_work.n_watches; i++) {
     apply_realtime(g_work.watches[i], g_ents, n_ents, g_ids, n);
   }
-  g_work.last_ok = now;
+  g_pass.news = true;  // folded into last_ok once, at the end of the pass
 
   // Realtime is the only endpoint AT sends with a content-length rather than
   // chunked, so a parse here is the proof that at_client's other branch works.
@@ -482,6 +535,15 @@ bool anything_soon(int64_t now) {
 // longer the worse it got - stale data that does not look stale, which is the
 // one failure spec 8 is written against.
 int32_t nominal_interval(int64_t now) { return anything_soon(now) ? RT_FAST_S : RT_SLOW_S; }
+
+// What gets published: when the board next expects news. With nothing upcoming
+// to ask realtime about - a quiet night - the next news is the schedule
+// refresh, so a healthy board must not read stale for most of every 15 minutes
+// just because realtime had nothing to do.
+int32_t expected_interval(int64_t now) {
+  if (realtime_ids(g_work, now, g_ids, MAX_RT_IDS, RT_PER_WATCH) == 0) return SCHEDULE_PERIOD_S;
+  return nominal_interval(now);
+}
 
 void log_states() {
   for (int i = 0; i < g_work.n_watches; i++) {
@@ -527,14 +589,18 @@ void log_pass(bool wifi, bool clock_ok, int64_t now, int32_t interval) {
     snprintf(ok_s, sizeof ok_s, "%lds ago", age);
   }
 
-  Serial.printf("fetch: wifi %d time %d sched %s rt %lds rows %s last_ok %s heap %u%s\n",
+  // On ESP-IDF the high-water mark is in bytes (StackType_t is uint8_t): the
+  // least free stack this task has ever had, out of 16384.
+  Serial.printf("fetch: wifi %d time %d sched %s rt %lds rows %s last_ok %s heap %u stack %u%s\n",
                 wifi ? 1 : 0, clock_ok ? 1 : 0, sched_s, static_cast<long>(interval), rows, ok_s,
-                static_cast<unsigned>(ESP.getFreeHeap()), g_backoff > 0 ? " backoff" : "");
+                static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)),
+                g_backoff > 0 ? " backoff" : "");
 }
 
 void task(void*) {
   for (;;) {
-    g_pass = Pass{false, false};
+    g_pass = Pass{};
 
     const bool wifi = ensure_wifi();
     const bool clock_ok = wifi && ensure_time();
@@ -544,7 +610,7 @@ void task(void*) {
       // still the right clock here - it only stops being trustworthy before
       // the first sync, and then there are no rows to age anyway.
       const int64_t now = time(nullptr);
-      g_work.poll_interval_s = nominal_interval(now);
+      g_work.poll_interval_s = expected_interval(now);
       publish();
       log_pass(wifi, false, now, NO_LINK_RETRY_S);
       vTaskDelay(pdMS_TO_TICKS(NO_LINK_RETRY_S * 1000));
@@ -568,7 +634,7 @@ void task(void*) {
     }
     refresh_realtime(now);
 
-    if (g_pass.any_ok) g_work.last_ok = now;
+    if (g_pass.news) g_work.last_ok = now;
 
     // 30 s while something is close, 2 minutes otherwise; doubling to a
     // 5 minute cap on 429, 5xx or a transport error, with the last good data
@@ -584,9 +650,10 @@ void task(void*) {
       pace = base;
     }
 
-    // The backoff paces this task; it is never published. Staleness grows from
-    // the last success at the nominal rate however far the backoff stretches.
-    g_work.poll_interval_s = base;
+    // The backoff paces this task; it is never published. What is published is
+    // when the board next expects news, so staleness grows from the last news
+    // at the honest rate however far the backoff stretches.
+    g_work.poll_interval_s = expected_interval(now);
     publish();
     log_states();
     log_pass(true, true, now, pace);  // the log shows the real pacing
@@ -598,6 +665,12 @@ void task(void*) {
 
 void fetcher_begin() {
   g_lock = xSemaphoreCreateMutex();
+  if (g_lock == nullptr) {
+    // Without the lock nothing can be published safely, so nothing is fetched.
+    // fetcher_snapshot sees the null lock and hands back an empty snapshot.
+    Serial.println("FATAL: fetcher mutex allocation failed, fetch task not started");
+    return;
+  }
 
   memset(&g_work, 0, sizeof g_work);
   g_work.n_watches = N_WATCHES;
