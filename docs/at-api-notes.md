@@ -342,13 +342,20 @@ should not treat a short entity list as a fetch failure.
 Re-verified against the live API on 2026-09-19, with new fixtures in
 `test/fixtures/post-crl/`:
 
-- `filter[start_hour]=0` is rejected: 400 `Invalid Request` ("Field validation
-  for 'StartHour'"). The valid range is **1..23** — a 00:00–00:59 departure
-  cannot be fetched with `start_hour=0`.
+- `filter[start_hour]=0` is rejected: 400 `Invalid Request`, detail
+  `"Key: 'StopTripRequest.StartHour' Error:Field validation for 'StartHour'
+  failed on the 'required' tag"` (full body in
+  `test/fixtures/post-crl/stoptrips_start_hour_0.json`). The validator reports
+  hour 0 as *missing* (`required`), not out of range — this looks like a
+  zero-value check on AT's side (Go's `required` tag rejects the zero value),
+  not a range check, which is why hour 1 is accepted and hour 0 is not. The
+  valid range is **1..23** — a 00:00–00:59 departure cannot be fetched with
+  `start_hour=0`.
 - An unknown stop code returns **200** `{"data":[]}`, not 404.
 - A bad subscription key returns **401** with a `statusCode`/`message` body.
 - `stops?filter[stop_code]` still resolves 8213/122/133/1060 to the same ids as
   on 13 September — the hashes are unchanged.
 
 New fixtures, captured 2026-09-19: `test/fixtures/post-crl/stops_8213.json`,
-`stops_122.json`, `stops_133.json`, `stops_1060.json`, `stops_unknown.json`.
+`stops_122.json`, `stops_133.json`, `stops_1060.json`, `stops_unknown.json`,
+`stoptrips_start_hour_0.json`.

@@ -1,0 +1,1 @@
+{"errors":[{"title":"Invalid Request","detail":"Key: 'StopTripRequest.StartHour' Error:Field validation for 'StartHour' failed on the 'required' tag","status":"400"}]}

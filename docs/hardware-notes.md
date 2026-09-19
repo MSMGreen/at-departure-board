@@ -260,7 +260,7 @@ the real AT API:
 | Lowest heap (min-ever) | 94,944 bytes |
 | Largest contiguous block | 94,196 bytes |
 | Steady-state free heap | ~157 KB |
-| Fetch task stack (core 0, 16,384 B) | 12,200 B free high-water mark (~4.2 KB used at peak, TLS handshakes included) |
+| Fetch task stack (core 0, 16,384 B) | 12,200 B free high-water mark — 4,184 B used at peak (16,384 − 12,200); the task performs the TLS handshakes, so this peak includes them |
 | Live build flash | 75.6% (~990 KB of 1.31 MB) |
 | Live build RAM | 25.8% |
 | Demo build flash | 26.7% |
@@ -295,9 +295,10 @@ likely need `huge_app.csv` rather than the default partition table.
 
 ### First boot needs a wait for WiFi association
 
-The very first fetch attempt on first boot ran before the WiFi association had
-completed and got transport errors. The fetch task needs to wait for
-association, not just for `WiFi.begin()` to return.
+The first fetch attempt on first boot returned HTTP `-1` for both lookups: it
+ran before WiFi association had completed. It succeeded once the code was
+changed to wait for association rather than just for `WiFi.begin()` to
+return.
 
 ## Still to verify on hardware
 
