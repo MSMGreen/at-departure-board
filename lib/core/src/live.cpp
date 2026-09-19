@@ -288,6 +288,9 @@ Board build_board(const Snapshot& s, const WatchConfig cfg[], const char* locati
     const int64_t overdue = now - s.last_ok - s.poll_interval_s;
     b.stale_s = overdue > 0 ? static_cast<int32_t>(overdue) : 0;
   }
+  // Spec 8: keep the last good data, show "stale", and dim the lanes, so old
+  // times can never be read as live ones.
+  b.dimmed = b.is_stale();
 
   for (int i = 0; i < s.n_watches; i++) {
     const LiveWatch& lw = s.watches[i];

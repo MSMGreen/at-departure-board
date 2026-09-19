@@ -18,7 +18,7 @@ static const Scene SCENE_DATA[] = {
         {"22R", "to City Centre", Kind::Bus, nullptr, nullptr, 2, {{660, true, false}, {1860, false, false}}},
         {"O-W", "to Onehunga", Kind::Train, "00AEEF", nullptr, 2, {{1140, false, false}, {2940, false, false}}},
     }},
-    {"stale", "17:46", "Kingsland", 240, false, 2, {
+    {"stale", "17:46", "Kingsland", 240, true, 2, {
         {"20", "to Wynyard Quarter", Kind::Bus, nullptr, nullptr, 2, {{240, true, false}, {1020, false, false}}},
         {"E-W", "to Britomart", Kind::Train, "97C93D", nullptr, 2, {{420, true, false}, {1320, true, false}}},
     }},

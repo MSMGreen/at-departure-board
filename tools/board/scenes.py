@@ -37,8 +37,9 @@ SCENES = {
         Watch(departures=[Departure(1140), Departure(2940)], **ONEHUNGA),
     ], "17:42"),
 
-    # WiFi has been gone for four minutes. Data stays up, marked.
-    "stale": Board(_two(), "17:46", stale_s=240),
+    # WiFi has been gone for four minutes. Data stays up, marked and dimmed
+    # (spec 8), exactly as build_board draws it on the firmware.
+    "stale": Board(_two(), "17:46", stale_s=240, dimmed=True),
 
     # Seven minutes early is real: observed delay was -427s.
     "arriving": Board([

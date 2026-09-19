@@ -339,6 +339,23 @@ void test_staleness_is_measured_against_the_polling_interval() {
   TEST_ASSERT_EQUAL_INT32(0, build_board(s, cfg, "K", T_15_00, 0).stale_s);
 }
 
+void test_a_stale_board_dims_its_lanes() {
+  // Spec 8: keep the last good data, show "stale 4m", dim the lanes.
+  const WatchConfig cfg[] = {{"to Wynyard Quarter", "8213", "20", "1060"}};
+  Snapshot s{};
+  s.n_watches = 1;
+  s.watches[0].state = WatchState::Ok;
+  s.poll_interval_s = 30;
+
+  s.last_ok = T_15_00 - 30;
+  TEST_ASSERT_FALSE(build_board(s, cfg, "K", T_15_00, 0).dimmed);
+
+  s.last_ok = T_15_00 - 270;
+  const Board b = build_board(s, cfg, "K", T_15_00, 0);
+  TEST_ASSERT_TRUE(b.is_stale());
+  TEST_ASSERT_TRUE(b.dimmed);
+}
+
 void test_realtime_ids_asks_only_about_services_still_to_come() {
   Snapshot s{};
   s.n_watches = 1;
@@ -559,6 +576,7 @@ int main(int, char**) {
   RUN_TEST(test_build_board_drops_departures_that_have_left);
   RUN_TEST(test_build_board_orders_by_the_time_the_service_will_actually_leave);
   RUN_TEST(test_staleness_is_measured_against_the_polling_interval);
+  RUN_TEST(test_a_stale_board_dims_its_lanes);
   RUN_TEST(test_realtime_ids_asks_only_about_services_still_to_come);
   RUN_TEST(test_a_late_bus_survives_a_schedule_refresh);
   RUN_TEST(test_carry_realtime_matches_by_trip_id_not_position);
