@@ -104,6 +104,18 @@ void test_an_unknown_stop_code_returns_an_empty_list_not_an_error() {
   TEST_ASSERT_FALSE(parse_stop(doc, &s));
 }
 
+void test_stop_name() {
+  JsonDocument f;
+  stop_filter(f);
+  JsonDocument doc;
+  load("test/fixtures/post-crl/stops_1060.json", doc, f);
+  StopInfo info{};
+  TEST_ASSERT_TRUE(parse_stop(doc, &info));
+  TEST_ASSERT_EQUAL_STRING("1060-00b64ee7", info.stop_id);
+  TEST_ASSERT_EQUAL_STRING("Wynyard Quarter", info.stop_name);
+  TEST_ASSERT_EQUAL_INT(0, info.location_type);
+}
+
 void test_parse_routes() {
   JsonDocument filter, doc;
   routes_filter(filter);
@@ -235,6 +247,7 @@ int main(int, char**) {
   RUN_TEST(test_start_hour_accepts_after_midnight_hours_but_not_zero);
   RUN_TEST(test_parse_stop);
   RUN_TEST(test_an_unknown_stop_code_returns_an_empty_list_not_an_error);
+  RUN_TEST(test_stop_name);
   RUN_TEST(test_parse_routes);
   RUN_TEST(test_parse_stoptrips);
   RUN_TEST(test_parse_stoptrips_after_midnight);

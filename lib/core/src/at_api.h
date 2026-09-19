@@ -15,9 +15,11 @@ constexpr int STOP_ID_LEN = 24;
 constexpr int ROUTE_ID_LEN = 16;
 constexpr int SHORT_NAME_LEN = 12;
 constexpr int STOP_CODE_LEN = 12;
+constexpr int STOP_NAME_LEN = 40;
 
 struct StopInfo {
   char stop_id[STOP_ID_LEN];
+  char stop_name[STOP_NAME_LEN];
   int location_type;  // 0 stop, 1 station
 };
 

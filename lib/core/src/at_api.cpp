@@ -70,6 +70,7 @@ bool url_realtime(char* out, size_t n, const char* const trip_ids[], int count) 
 void stop_filter(JsonDocument& f) {
   JsonObject a = f["data"][0]["attributes"].to<JsonObject>();
   a["stop_id"] = true;
+  a["stop_name"] = true;
   a["location_type"] = true;
 }
 
@@ -114,6 +115,7 @@ bool parse_stop(const JsonDocument& doc, StopInfo* out) {
   if (rows.isNull() || rows.size() == 0) return false;
   JsonObjectConst a = rows[0]["attributes"];
   copy(out->stop_id, sizeof out->stop_id, a["stop_id"] | "");
+  copy(out->stop_name, sizeof out->stop_name, a["stop_name"] | "");
   out->location_type = a["location_type"] | 0;
   return out->stop_id[0] != '\0';
 }
