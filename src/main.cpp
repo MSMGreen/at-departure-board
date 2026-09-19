@@ -14,10 +14,10 @@
 #else
 #include <WiFi.h>
 
+#include "config.h"
 #include "fetcher.h"
 #include "live.h"
 #include "secrets.h"
-#include "watch_config.h"
 #endif
 
 namespace {
@@ -57,7 +57,7 @@ void report(uint32_t now, uint32_t frames, uint32_t draw_ms_total, uint32_t sinc
 
 Board board_now(uint32_t, int64_t now) {
   fetcher_snapshot(&snap);  // a memcpy under the mutex, never a network wait
-  return build_board(snap, WATCHES, LOCATION, now, 0);
+  return build_board(snap, config_watches(), config_location(), now, config_theme());
 }
 #endif
 
@@ -78,6 +78,9 @@ void setup() {
   Serial.println("BOOT-OK demo");
 #else
   WiFi.mode(WIFI_STA);
+
+  // Before fetcher_begin(): that reads config_n_watches().
+  config_begin();
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   bool wifi_ok = false;

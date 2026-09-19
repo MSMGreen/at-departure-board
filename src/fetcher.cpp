@@ -13,8 +13,8 @@
 #include "at_api.h"
 #include "at_client.h"
 #include "freshness.h"
+#include "config.h"
 #include "secrets.h"
-#include "watch_config.h"
 
 // The three loops of spec 5, folded into one task so that only one thing ever
 // holds a TLS session: schedule every 15 minutes (and on a date rollover),
@@ -26,8 +26,6 @@
 // laptop. What is left here is I/O, cadence and the error surfaces of spec 8.
 
 namespace {
-
-static_assert(N_WATCHES <= MAX_WATCHES, "watch_config declares more watches than a Snapshot holds");
 
 // --- cadences (spec 5) ------------------------------------------------------
 // SCHEDULE_PERIOD_S, RT_FAST_S and RT_SLOW_S live in freshness.h, next to the
@@ -287,7 +285,7 @@ int lookup_stop(const char* stop_code, char* out, size_t n) {
 void resolve(int i, int64_t now) {
   Resolved& r = g_res[i];
   LiveWatch& w = g_work.watches[i];
-  const WatchConfig& cfg = WATCHES[i];
+  const WatchConfig& cfg = config_watches()[i];
 
   int status = lookup_stop(cfg.stop_code, r.stop_id, sizeof r.stop_id);
   if (status == 200 && cfg.toward_stop_code[0] != '\0') {
@@ -352,7 +350,7 @@ void resolve(int i, int64_t now) {
 bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
   Resolved& r = g_res[i];
   LiveWatch& w = g_work.watches[i];
-  const WatchConfig& cfg = WATCHES[i];
+  const WatchConfig& cfg = config_watches()[i];
 
   // Stamped before the requests, not after: a failed refresh must fall back to
   // next_sched for its retry rather than looking like an unhandled rollover
@@ -572,7 +570,7 @@ void log_states() {
     if (g_work.watches[i].state == g_logged[i]) continue;
     g_logged[i] = g_work.watches[i].state;
     const char* m = state_message(g_logged[i]);
-    Serial.printf("watch %d (%s): %s\n", i, WATCHES[i].stop_code, m[0] != '\0' ? m : "ok");
+    Serial.printf("watch %d (%s): %s\n", i, config_watches()[i].stop_code, m[0] != '\0' ? m : "ok");
   }
 }
 
@@ -702,9 +700,9 @@ void fetcher_begin() {
   }
 
   memset(&g_work, 0, sizeof g_work);
-  g_work.n_watches = N_WATCHES;
+  g_work.n_watches = config_n_watches();
   g_work.poll_interval_s = RT_SLOW_S;
-  for (int i = 0; i < N_WATCHES; i++) {
+  for (int i = 0; i < config_n_watches(); i++) {
     g_work.watches[i].state = WatchState::Starting;
     g_work.watches[i].kind = Kind::Bus;
     memset(&g_res[i], 0, sizeof g_res[i]);
