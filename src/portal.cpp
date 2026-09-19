@@ -19,6 +19,7 @@
 #include "at_api.h"
 #include "at_client.h"
 #include "config.h"
+#include "portal_page.h"
 #include "theme.h"
 
 namespace {
@@ -40,6 +41,10 @@ bool json_append(char* json, size_t cap, size_t* p, const char* fmt, ...) {
   if (n < 0 || static_cast<size_t>(n) >= cap - *p) return false;
   *p += static_cast<size_t>(n);
   return true;
+}
+
+void handle_root() {
+  g_server.send_P(200, "text/html", PORTAL_PAGE);
 }
 
 void handle_config() {
@@ -202,6 +207,7 @@ void handle_save_config() {
 void handle_not_found() { g_server.send(404, "text/plain", "not found"); }
 
 void portal_task(void*) {
+  g_server.on("/", HTTP_GET, handle_root);
   g_server.on("/api/config", HTTP_GET, handle_config);
   g_server.on("/api/config", HTTP_POST, handle_save_config);
   g_server.on("/api/themes", HTTP_GET, handle_themes);
