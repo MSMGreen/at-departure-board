@@ -8,7 +8,8 @@ time to arrival — it enters at the left twenty minutes out and pulls into the
 stop as the countdown reaches zero. The point is that you can read it from
 across a room without resolving any digits.
 
-Status: display layer complete and testable without hardware. Firmware next.
+Status: display layer complete; firmware draws the board on the panel in
+`DEMO_MODE` (synthetic departures). Live data next.
 
 ## Try it without hardware
 
@@ -27,6 +28,18 @@ at 1–2 watches, compact at 3–4, because a 40px vehicle does not fit a 55px l
 python tools/simulate.py --scene two_up --theme ghibli
 python tools/author_art.py               # regenerate the vehicle art
 ```
+
+## Flash the board
+
+Needs PlatformIO. Wiring is in the table below.
+
+```bash
+pio test -e native          # firmware logic, on your PC (needs a C++ compiler)
+pio run -e esp32 -t upload  # first: hold BOOT, tap EN, release BOOT
+```
+
+This build runs `DEMO_MODE`: every canonical state from the simulator, played
+in real time on the panel, no WiFi or API key needed.
 
 ## Development
 
