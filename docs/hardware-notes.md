@@ -25,11 +25,9 @@ flash without letting esptool reset it.
 
 1. Hold **BOOT**, press and release **EN**, then release **BOOT**. The chip now
    sits in the bootloader; the screen does not change.
-2. Flash with `--before no_reset` at **115200** baud:
-
-```
-python -m esptool --chip esp32 --port COM8 --baud 115200   --before no_reset --after hard_reset write_flash -z   0x1000 .pio/build/<env>/bootloader.bin 0x8000 .pio/build/<env>/partitions.bin   0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin   0x10000 .pio/build/<env>/firmware.bin
-```
+2. `pio run -e esp32 -t upload`. `platformio.ini` sets
+   `board_upload.before_reset = no_reset` and `upload_speed = 115200`, so
+   esptool neither tries the broken auto-reset nor drops the link.
 
 `--after hard_reset` via RTS *does* work, so the new firmware starts on its own.
 
@@ -103,6 +101,45 @@ The panel **does not answer reads**: RDDID (`0xD3`) returns `00 00 00` and
 RDDST returns constant garbage. So the controller can't be detected in software;
 identify it by rendering, as above. Don't build anything that depends on
 reading back from the panel.
+
+## Display performance
+
+Measured on 2026-09-19 over a 225 s capture covering every scene in both themes,
+SPI at 27 MHz (the default set in `platformio.ini`):
+
+| Measurement | Value |
+|---|---|
+| SPI clock | 27 MHz |
+| **Worst draw time per frame** | **59 ms** |
+| Frame rate (all scenes) | 14.9–15.1 fps |
+| **Lowest heap (min-ever)** | **311,588 bytes** |
+| Largest contiguous block | 110,580 bytes |
+| Flash used | 25.3% (331,741 of 1,310,720 bytes) |
+| RAM | 6.9% |
+
+The frame budget is 66 ms per frame at 15 fps; 59 ms leaves 7 ms of headroom.
+
+The band renderer redraws the board in 48-row horizontal bands, each 320×48×2
+bytes. That is **30,720 bytes per band** against the design spec's estimate of
+35,840 (320×56), with **5 pushes per frame** to refresh the screen. This keeps
+memory flat — no full-screen framebuffer.
+
+SPI 40 MHz was not tried: 15 fps is met at 27 MHz and 40 MHz remains as headroom
+for when WiFi and TLS run alongside.
+
+### Double-precision sin() is software on this chip
+
+The first measurement on 2026-09-19 showed the Ghibli theme at 96 ms per frame
+(10.3 fps) in the 1–2 lane scenes, while transit ran at 54–57 ms. The cause:
+`hill()` and `shore()` call `sin()` on doubles, and the ESP32's FPU is
+single-precision only, so those calls are emulated in software. The band
+renderer redraws each lane once per band, which meant about 3,000 software
+`sin()` calls per frame.
+
+Precomputing them into lookup tables (`hill_at` and `shore_at` in
+`lib/core/src/shapes.cpp`, filled from the same functions so the values cannot
+diverge) brought Ghibli to 58–59 ms per frame and unlocked 15 fps across all
+scenes. The lesson: keep `double` maths out of the per-frame path.
 
 ## Flash is the tighter constraint
 
@@ -199,5 +236,5 @@ would have been wrong by over a minute in both directions.
 
 - TLS with certificate pinning. The spike used `setInsecure()`, which is fine for
   a measurement and **must not** become the shipped behaviour.
-- The display under real load: sprite pushes per lane, PWM dimming on GPIO32,
-  and whether 27 MHz SPI holds up alongside WiFi. Basic bring-up is done (above).
+- PWM dimming driven by the app (the LEDC path itself is verified), and
+  whether the frame rate holds with WiFi and TLS running alongside.
