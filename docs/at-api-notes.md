@@ -78,19 +78,48 @@ Therefore: **never treat a 404 from `stoptrips` as a stale/invalid stop_id.**
 Only a 404 from `GET /stops/{id}` means the id has gone stale. Conflating them
 makes the board re-resolve every stop every night.
 
-### The window does not cross midnight
+### After-midnight services belong to the previous service date
+
+**Correction (2026-09-19).** An earlier version of this section was headed "The
+window does not cross midnight" and said `hour_range` is clamped to the service
+day, so a window spanning midnight needed a second request against the next
+date. **That was a misreading.** It rested on this, from a Sunday:
 
 ```
 8213, hour 23, range 1 -> 4 rows
-8213, hour 23, range 6 -> 4 rows   (identical; clamped at end of service day)
+8213, hour 23, range 6 -> 4 rows
 ```
 
-`hour_range` is clamped to the service day. A window spanning midnight needs a
-second request with `filter[date]` set to the following day. `hour_range` itself
-accepts at least 6 and scales linearly (hour 17: range 1→8 rows, 6→44 rows).
+Those are identical only because stop 8213 has no late service on a Sunday.
+Nothing was being clamped. Verified live on Saturday night 2026-09-19 against
+Kingsland `122-34ecc043`:
 
-`departure_time` > `24:00:00` is legal GTFS for after-midnight services. **Not
-observed** in these samples — parse tolerantly anyway, don't rely on it.
+| query | result |
+|---|---|
+| `date=2026-09-19&start_hour=23&hour_range=3` | 200, 19 rows, `23:04` … **`25:25`** |
+| `date=2026-09-19&start_hour=24&hour_range=2` | 200, 11 rows, `24:04` … `25:25` |
+| `date=2026-09-20` (no start_hour) | 404 |
+
+So:
+
+- After-midnight trains **exist**, and are filed under the **previous** service
+  date with `departure_time` of `24:xx` and `25:xx` (legal GTFS). 00:04 on the
+  20th is `24:04:00` on service date 2026-09-19.
+- `hour_range` is **not** clamped at midnight: hour 23 for 3 hours runs to 25:25
+  on the same date.
+- `start_hour` **accepts 24** and above. Only 0 is rejected (see below).
+
+What the board does (`schedule_windows`): from 04:00, one request
+`{today, hour, 3}`. In the small hours (00:00–03:59), two: yesterday's late
+services `{yesterday, 24 + hour, 3}`, and today's `{today, max(hour, 1), 3}`.
+A second request against the next date is never needed.
+
+Fixture: `test/fixtures/post-crl/stoptrips_kingsland_after_midnight.json` (the
+`start_hour=24&hour_range=2` answer: 11 rows, service_date 2026-09-19, first
+`24:04:00`).
+
+`hour_range` itself accepts at least 6 and scales linearly (hour 17: range 1→8
+rows, 6→44 rows).
 
 ## Realtime
 
@@ -348,9 +377,10 @@ Re-verified against the live API on 2026-09-19, with new fixtures in
   `test/fixtures/post-crl/stoptrips_start_hour_0.json`). The validator reports
   hour 0 as *missing* (`required`), not out of range — this looks like a
   zero-value check on AT's side (Go's `required` tag rejects the zero value),
-  not a range check, which is why hour 1 is accepted and hour 0 is not. The
-  valid range is **1..23** — a 00:00–00:59 departure cannot be fetched with
-  `start_hour=0`.
+  not a range check, which is why hour 1 is accepted and hour 0 is not. Hour
+  24 and above is accepted too (see "After-midnight services belong to the
+  previous service date"): a 00:00–00:59 departure is fetched as yesterday's
+  `start_hour=24`, never as today's `start_hour=0`. The board allows 1..47.
 - An unknown stop code returns **200** `{"data":[]}`, not 404.
 - A bad subscription key returns **401** with a `statusCode`/`message` body.
 - `stops?filter[stop_code]` still resolves 8213/122/133/1060 to the same ids as

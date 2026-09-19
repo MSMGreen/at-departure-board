@@ -6,6 +6,7 @@
 #include <string>
 
 #include "at_api.h"
+#include "nztime.h"
 
 void setUp() {}
 void tearDown() {}
@@ -64,12 +65,19 @@ void test_urls() {
   TEST_ASSERT_FALSE(url_realtime(small, sizeof small, ids, 2));  // refuses to truncate
 }
 
-void test_start_hour_zero_is_rejected() {
-  // The API answers 400 for start_hour=0 (verified live 2026-09-19), so the
-  // builder refuses it rather than letting the board ask.
+void test_start_hour_accepts_after_midnight_hours_but_not_zero() {
+  // The API answers 400 for start_hour=0 (verified live 2026-09-19): a
+  // required-tag zero-value check. It accepts 24 and above, which is how a
+  // service day's after-midnight trips are asked for (24:04 is 00:04 the next
+  // morning, filed under the previous service date).
   char u[256];
   TEST_ASSERT_FALSE(url_stoptrips(u, sizeof u, "122-34ecc043", {2026, 9, 19}, 0, 3));
-  TEST_ASSERT_FALSE(url_stoptrips(u, sizeof u, "122-34ecc043", {2026, 9, 19}, 24, 3));
+  TEST_ASSERT_TRUE(url_stoptrips(u, sizeof u, "122-34ecc043", {2026, 9, 19}, 24, 2));
+  TEST_ASSERT_EQUAL_STRING(
+      "https://api.at.govt.nz/gtfs/v3/stops/122-34ecc043/stoptrips"
+      "?filter%5Bdate%5D=2026-09-19&filter%5Bstart_hour%5D=24&filter%5Bhour_range%5D=2", u);
+  TEST_ASSERT_TRUE(url_stoptrips(u, sizeof u, "122-34ecc043", {2026, 9, 19}, 47, 3));
+  TEST_ASSERT_FALSE(url_stoptrips(u, sizeof u, "122-34ecc043", {2026, 9, 19}, 48, 3));
 }
 
 void test_parse_stop() {
@@ -153,6 +161,24 @@ void test_parse_stoptrips() {
   TEST_ASSERT_EQUAL_INT(13, rows[0].service_date.d);
 }
 
+void test_parse_stoptrips_after_midnight() {
+  // Kingsland, captured live on the night of Saturday 2026-09-19 with
+  // date=2026-09-19&start_hour=24&hour_range=2. After-midnight trains are
+  // filed under the previous service date with hours of 24 and more.
+  JsonDocument filter, doc;
+  stoptrips_filter(filter);
+  load("test/fixtures/post-crl/stoptrips_kingsland_after_midnight.json", doc, filter);
+  StopTripRow rows[48];
+  const int n = parse_stoptrips(doc, rows, 48);
+  TEST_ASSERT_EQUAL_INT(11, n);
+  TEST_ASSERT_EQUAL_INT32(24 * 3600 + 4 * 60, rows[0].departure_s);  // "24:04:00"
+  TEST_ASSERT_EQUAL_INT(2026, rows[0].service_date.y);
+  TEST_ASSERT_EQUAL_INT(9, rows[0].service_date.m);
+  TEST_ASSERT_EQUAL_INT(19, rows[0].service_date.d);
+  // 2026-09-20 00:04 NZST, checked with Python zoneinfo (Pacific/Auckland).
+  TEST_ASSERT_EQUAL_INT64(1789819440, gtfs_epoch(rows[0].service_date, rows[0].departure_s));
+}
+
 void test_parse_stoptrips_respects_the_cap() {
   JsonDocument filter, doc;
   stoptrips_filter(filter);
@@ -206,11 +232,12 @@ void test_parse_realtime() {
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_urls);
-  RUN_TEST(test_start_hour_zero_is_rejected);
+  RUN_TEST(test_start_hour_accepts_after_midnight_hours_but_not_zero);
   RUN_TEST(test_parse_stop);
   RUN_TEST(test_an_unknown_stop_code_returns_an_empty_list_not_an_error);
   RUN_TEST(test_parse_routes);
   RUN_TEST(test_parse_stoptrips);
+  RUN_TEST(test_parse_stoptrips_after_midnight);
   RUN_TEST(test_parse_stoptrips_respects_the_cap);
   RUN_TEST(test_parse_trip_stops_keeps_sequence_order);
   RUN_TEST(test_parse_realtime);

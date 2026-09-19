@@ -117,14 +117,16 @@ int realtime_ids(const Snapshot& s, int64_t now, const char* out[], int cap, int
 
 struct FetchWindow {
   CivilDate date;
-  int start_hour;  // always 1..23
+  int start_hour;  // 1..26: never 0, which the API rejects with 400
   int hour_range;
 };
 
-// The stoptrips request(s) covering the next three hours. hour_range is clamped
-// to the service day by the API, so a window crossing midnight needs a second
-// request against the next date - and start_hour is never 0, which the API
-// rejects with 400. Returns 1 or 2.
+// The stoptrips request(s) covering the next three hours. A service date runs
+// past midnight (its late trips are 24:xx, 25:xx) and the API does not clamp
+// hour_range at 24, so from 04:00 one request covers it. In the small hours the
+// trains still running belong to yesterday's service date, so a second request
+// asks yesterday from 24 + hour; today's own is asked from max(hour, 1).
+// Returns 1 or 2.
 int schedule_windows(const LocalTime& now, FetchWindow out[2]);
 
 Board build_board(const Snapshot& s, const WatchConfig cfg[], const char* location,

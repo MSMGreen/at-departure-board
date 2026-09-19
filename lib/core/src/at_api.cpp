@@ -41,7 +41,7 @@ bool url_rail_routes(char* out, size_t n) {
 
 bool url_stoptrips(char* out, size_t n, const char* stop_id, CivilDate date,
                    int start_hour, int hour_range) {
-  if (start_hour < 1 || start_hour > 23 || hour_range < 1) return false;
+  if (start_hour < 1 || start_hour > 47 || hour_range < 1) return false;
   char day[16];
   format_iso_date(date, day, sizeof day);
   return put(out, n,

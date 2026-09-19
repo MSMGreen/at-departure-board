@@ -58,7 +58,9 @@ struct RtEntity {
 bool url_stop_by_code(char* out, size_t n, const char* stop_code);
 bool url_routes_by_short_name(char* out, size_t n, const char* short_name);
 bool url_rail_routes(char* out, size_t n);
-// start_hour must be 1..23: the API answers 400 for 0 (verified 2026-09-19).
+// start_hour must be 1..47. The API answers 400 for 0 (a required-tag
+// zero-value check), and accepts 24 and above: after-midnight trips are filed
+// under the previous service date as 24:xx, 25:xx (verified 2026-09-19).
 bool url_stoptrips(char* out, size_t n, const char* stop_id, CivilDate date,
                    int start_hour, int hour_range);
 bool url_trip_stops(char* out, size_t n, const char* trip_id);

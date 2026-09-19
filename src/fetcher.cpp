@@ -347,8 +347,8 @@ bool refresh_schedule(int i, int64_t now, const LocalTime& lt) {
   // every tick for the rest of the day.
   r.sched_date = CivilDate{lt.y, lt.m, lt.d};
 
-  // 1 or 2 requests: schedule_windows already handles the midnight split and
-  // the hour 0 the API rejects.
+  // 1 or 2 requests: schedule_windows already asks yesterday's service date
+  // for its after-midnight trips in the small hours, and never asks for hour 0.
   const int n_win = schedule_windows(lt, g_win);
   int n = 0;
   for (int k = 0; k < n_win; k++) {

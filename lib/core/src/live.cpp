@@ -258,17 +258,19 @@ int realtime_ids(const Snapshot& s, int64_t now, const char* out[], int cap, int
 
 int schedule_windows(const LocalTime& now, FetchWindow out[2]) {
   constexpr int LOOKAHEAD_H = 3;
-  // Hour 0 is rejected by the API, so the first hour we can ask for is 1; a
-  // departure between 00:00 and 00:59 is simply not fetchable.
-  const int start = now.hour < 1 ? 1 : now.hour;
+  constexpr int SMALL_HOURS_END = 4;  // no service date runs later than 27:00
   const CivilDate today{now.y, now.m, now.d};
-  if (start + LOOKAHEAD_H <= 24) {
-    out[0] = {today, start, LOOKAHEAD_H};
+  if (now.hour >= SMALL_HOURS_END) {
+    // The range runs past 24 on the same service date: no split is needed.
+    out[0] = {today, now.hour, LOOKAHEAD_H};
     return 1;
   }
-  out[0] = {today, start, 24 - start};
-  out[1] = {civil_from_days(days_from_civil(today.y, today.m, today.d) + 1), 1,
-            start + LOOKAHEAD_H - 24};
+  // Yesterday's late services, filed as 24:xx and later under its own date,
+  // then today's. Hour 0 is rejected by the API, and today's 00:xx trips do
+  // not exist anyway - they are yesterday's 24:xx.
+  out[0] = {civil_from_days(days_from_civil(today.y, today.m, today.d) - 1), 24 + now.hour,
+            LOOKAHEAD_H};
+  out[1] = {today, now.hour < 1 ? 1 : now.hour, LOOKAHEAD_H};
   return 2;
 }
 

@@ -467,59 +467,68 @@ void test_a_heard_of_row_that_has_left_is_not_asked_about() {
   TEST_ASSERT_EQUAL_INT(0, realtime_ids(s, T_15_00, ids, 4, 6));
 }
 
+namespace {
+LocalTime at(int y, int m, int d, int hour) {
+  LocalTime t{};
+  t.y = y;
+  t.m = m;
+  t.d = d;
+  t.hour = hour;
+  return t;
+}
+
+void expect_window(const FetchWindow& w, int y, int m, int d, int start, int range) {
+  TEST_ASSERT_EQUAL_INT(y, w.date.y);
+  TEST_ASSERT_EQUAL_INT(m, w.date.m);
+  TEST_ASSERT_EQUAL_INT(d, w.date.d);
+  TEST_ASSERT_EQUAL_INT(start, w.start_hour);
+  TEST_ASSERT_EQUAL_INT(range, w.hour_range);
+}
+}  // namespace
+
 void test_schedule_windows_cover_three_hours_from_now() {
   FetchWindow w[2];
-  LocalTime t{};
-  t.y = 2026;
-  t.m = 9;
-  t.d = 19;
-  t.hour = 17;
-  TEST_ASSERT_EQUAL_INT(1, schedule_windows(t, w));
-  TEST_ASSERT_EQUAL_INT(2026, w[0].date.y);
-  TEST_ASSERT_EQUAL_INT(19, w[0].date.d);
-  TEST_ASSERT_EQUAL_INT(17, w[0].start_hour);
-  TEST_ASSERT_EQUAL_INT(3, w[0].hour_range);
+  TEST_ASSERT_EQUAL_INT(1, schedule_windows(at(2026, 9, 19, 17), w));
+  expect_window(w[0], 2026, 9, 19, 17, 3);
 }
 
-void test_schedule_windows_split_at_midnight_because_the_api_clamps() {
+void test_schedule_windows_run_past_midnight_on_the_same_service_date() {
+  // The API does not clamp at midnight: 23:00 for three hours returns 23:04
+  // through 25:25 against one date (verified live 2026-09-19).
   FetchWindow w[2];
-  LocalTime t{};
-  t.y = 2026;
-  t.m = 9;
-  t.d = 19;
-  t.hour = 23;
-  TEST_ASSERT_EQUAL_INT(2, schedule_windows(t, w));
-  TEST_ASSERT_EQUAL_INT(19, w[0].date.d);
-  TEST_ASSERT_EQUAL_INT(23, w[0].start_hour);
-  TEST_ASSERT_EQUAL_INT(1, w[0].hour_range);
-  TEST_ASSERT_EQUAL_INT(20, w[1].date.d);  // next service date
-  TEST_ASSERT_EQUAL_INT(1, w[1].start_hour);  // never 0: the API rejects it
-  TEST_ASSERT_EQUAL_INT(2, w[1].hour_range);
+  TEST_ASSERT_EQUAL_INT(1, schedule_windows(at(2026, 9, 19, 23), w));
+  expect_window(w[0], 2026, 9, 19, 23, 3);
 }
 
-void test_schedule_windows_never_ask_for_hour_zero() {
+void test_schedule_windows_at_midnight_ask_yesterday_for_its_late_services() {
+  // 00:xx on the 20th: the trains still running are yesterday's 24:xx, and
+  // today's own day is asked from hour 1 because the API rejects 0.
   FetchWindow w[2];
-  LocalTime t{};
-  t.y = 2026;
-  t.m = 9;
-  t.d = 20;
-  t.hour = 0;
-  TEST_ASSERT_EQUAL_INT(1, schedule_windows(t, w));
-  TEST_ASSERT_EQUAL_INT(20, w[0].date.d);
-  TEST_ASSERT_EQUAL_INT(1, w[0].start_hour);
-  TEST_ASSERT_EQUAL_INT(3, w[0].hour_range);
+  TEST_ASSERT_EQUAL_INT(2, schedule_windows(at(2026, 9, 20, 0), w));
+  expect_window(w[0], 2026, 9, 19, 24, 3);
+  expect_window(w[1], 2026, 9, 20, 1, 3);
 }
 
-void test_schedule_windows_roll_over_a_month_end() {
+void test_schedule_windows_in_the_small_hours() {
   FetchWindow w[2];
-  LocalTime t{};
-  t.y = 2026;
-  t.m = 9;
-  t.d = 30;
-  t.hour = 23;
-  TEST_ASSERT_EQUAL_INT(2, schedule_windows(t, w));
-  TEST_ASSERT_EQUAL_INT(10, w[1].date.m);
-  TEST_ASSERT_EQUAL_INT(1, w[1].date.d);
+  TEST_ASSERT_EQUAL_INT(2, schedule_windows(at(2026, 9, 20, 2), w));
+  expect_window(w[0], 2026, 9, 19, 26, 3);
+  expect_window(w[1], 2026, 9, 20, 2, 3);
+
+  // From 04:00 one window is enough again.
+  TEST_ASSERT_EQUAL_INT(1, schedule_windows(at(2026, 9, 20, 4), w));
+  expect_window(w[0], 2026, 9, 20, 4, 3);
+}
+
+void test_schedule_windows_roll_back_over_a_month_end() {
+  FetchWindow w[2];
+  TEST_ASSERT_EQUAL_INT(2, schedule_windows(at(2026, 10, 1, 0), w));
+  expect_window(w[0], 2026, 9, 30, 24, 3);
+  expect_window(w[1], 2026, 10, 1, 1, 3);
+
+  TEST_ASSERT_EQUAL_INT(2, schedule_windows(at(2027, 1, 1, 1), w));  // and a year end
+  expect_window(w[0], 2026, 12, 31, 25, 3);
+  expect_window(w[1], 2027, 1, 1, 1, 3);
 }
 
 void test_state_messages() {
@@ -557,9 +566,10 @@ int main(int, char**) {
   RUN_TEST(test_a_never_heard_of_row_twenty_minutes_past_is_not);
   RUN_TEST(test_a_heard_of_row_that_has_left_is_not_asked_about);
   RUN_TEST(test_schedule_windows_cover_three_hours_from_now);
-  RUN_TEST(test_schedule_windows_split_at_midnight_because_the_api_clamps);
-  RUN_TEST(test_schedule_windows_never_ask_for_hour_zero);
-  RUN_TEST(test_schedule_windows_roll_over_a_month_end);
+  RUN_TEST(test_schedule_windows_run_past_midnight_on_the_same_service_date);
+  RUN_TEST(test_schedule_windows_at_midnight_ask_yesterday_for_its_late_services);
+  RUN_TEST(test_schedule_windows_in_the_small_hours);
+  RUN_TEST(test_schedule_windows_roll_back_over_a_month_end);
   RUN_TEST(test_state_messages);
   return UNITY_END();
 }
