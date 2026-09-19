@@ -17,10 +17,12 @@ Board board_from_scene(const Scene& s, uint8_t theme_index, int32_t elapsed_s) {
   b.stale_s = s.stale_s;
   b.dimmed = s.dimmed;
   b.theme = theme_index;
+  board_set_location(&b, s.location);
   for (int i = 0; i < s.n_watches; i++) {
     const SceneWatch& sw = s.watches[i];
     Watch& w = b.watches[i];
     watch_init(&w, sw.badge, sw.headsign, sw.kind, sw.route_color);
+    watch_set_message(&w, sw.message);
     for (int j = 0; j < sw.n_deps; j++) {
       const int32_t eta = sw.deps[j].eta_s - elapsed_s;
       if (eta < 0) continue;  // it has left; the next one is promoted

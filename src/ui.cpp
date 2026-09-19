@@ -19,9 +19,6 @@ const Font FONT_BADGE = {nullptr, 2};               // 16 px proportional
 const Font FONT_MINUTES = {&FreeMonoBold12pt7b, 0};
 constexpr int MINUTES_DIGIT_H = 15;                 // for the cancelled strike
 
-// render.py hardcodes the location too; config owns it in the app plan.
-const char* const LOCATION = "Kingsland";
-
 // The bob is sin(5t): period 2*pi/5 s = 1256.64 ms. Folding time into 100
 // whole periods (125,664 ms) keeps the float argument small, so it never
 // loses precision however long the board has been up. The fold is 0.3 ms
@@ -31,7 +28,7 @@ constexpr uint32_t BOB_FOLD_MS = 125664;
 void status_bar(Painter& p, const Board& b, const Theme& th) {
   p.rect(0, 0, W, STATUS_H, th.colours[C_PANEL]);
   const int mid = STATUS_H / 2;
-  p.text(LOCATION, 6, mid, ML_DATUM, FONT_SMALL, th.colours[C_DIM]);
+  p.text(b.location, 6, mid, ML_DATUM, FONT_SMALL, th.colours[C_DIM]);
   p.text(b.clock, W - 6, mid, MR_DATUM, FONT_SMALL, th.colours[C_TEXT]);
 
   char label[16];
@@ -50,10 +47,12 @@ void status_bar(Painter& p, const Board& b, const Theme& th) {
 
 void times(Painter& p, const Lane& ln, const Watch& w, const Theme& th) {
   const Rgb dim = th.colours[C_DIM];
-  const Departure* nxt = w.next();
+  const Departure* nxt = w.message[0] != '\0' ? nullptr : w.next();
   if (nxt == nullptr) {
     p.text("--", ln.minutes_x, ln.minutes_y, TR_DATUM, FONT_MINUTES, dim);
-    p.text("none tonight", ln.following_x, ln.following_y, TR_DATUM, FONT_SMALL, dim);
+    const bool has_message = w.message[0] != '\0';
+    p.text(has_message ? w.message : "none tonight", ln.following_x, ln.following_y,
+           TR_DATUM, FONT_SMALL, has_message ? th.colours[C_WARN] : dim);
     return;
   }
 
@@ -154,7 +153,7 @@ void scenery(Painter& p, SceneryKind kind, int x0, int y0, int x1, int y1, Kind 
 void vehicle(Painter& p, const Lane& ln, const Watch& w, float t, int index, const Theme& th,
              const SpriteRef& sp, Rgb colour) {
   Rgb roles[ROLE_SLOTS];
-  const Departure* nxt = w.next();
+  const Departure* nxt = w.message[0] != '\0' ? nullptr : w.next();
   if (nxt == nullptr) {
     // Parked at the left, lights off.
     role_colours(th, shade(colour, 0.4), roles);

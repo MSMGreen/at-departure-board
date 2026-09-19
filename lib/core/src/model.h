@@ -24,6 +24,9 @@ struct Watch {
   Kind kind;
   bool has_route_color;
   Rgb route_color;
+  // Set when the board cannot honestly show times for this watch (spec 8).
+  // A watch with a message shows no departures at all.
+  char message[32];
   Departure deps[MAX_DEPARTURES];
   uint8_t n_deps;
 
@@ -40,6 +43,7 @@ struct Board {
   int32_t stale_s;
   bool dimmed;
   uint8_t theme;  // index into the generated theme table
+  char location[24];
 
   bool is_stale() const { return stale_s > STALE_AFTER_S; }
 };
@@ -48,3 +52,5 @@ struct Board {
 // null, and #000000 counts as absent (see parse_hex).
 void watch_init(Watch* w, const char* badge, const char* headsign, Kind kind,
                 const char* route_color_hex);
+void watch_set_message(Watch* w, const char* message);  // null or "" clears it
+void board_set_location(Board* b, const char* location);

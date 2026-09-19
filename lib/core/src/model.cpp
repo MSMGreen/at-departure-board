@@ -39,3 +39,11 @@ void watch_init(Watch* w, const char* badge, const char* headsign, Kind kind,
   w->kind = kind;
   w->has_route_color = parse_hex(route_color_hex, &w->route_color);
 }
+
+void watch_set_message(Watch* w, const char* message) {
+  copy_text(w->message, sizeof w->message, message);
+}
+
+void board_set_location(Board* b, const char* location) {
+  copy_text(b->location, sizeof b->location, location);
+}

@@ -30,6 +30,9 @@ class Watch:
     kind: str
     departures: List[Departure] = field(default_factory=list)
     route_color: Optional[str] = None
+    # Set when the board cannot honestly show times for this watch (spec 8).
+    # A watch with a message shows no departures at all.
+    message: Optional[str] = None
 
     def __post_init__(self):
         self.departures = sorted(self.departures, key=lambda d: d.eta_s)
@@ -50,6 +53,7 @@ class Board:
     stale_s: int = 0
     dimmed: bool = False
     theme: str = "transit"
+    location: str = "Kingsland"
 
     def __post_init__(self):
         if not 1 <= len(self.watches) <= MAX_WATCHES:
