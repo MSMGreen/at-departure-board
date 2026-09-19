@@ -74,11 +74,16 @@ void handle_set_theme() {
     g_server.send(400, "application/json", "{\"error\":\"theme is required\"}");
     return;
   }
-  const uint8_t t = doc["theme"].as<uint8_t>();
-  if (t >= theme_count()) {
+  if (!doc["theme"].is<int>()) {
+    g_server.send(400, "application/json", "{\"error\":\"theme must be an integer\"}");
+    return;
+  }
+  const int v = doc["theme"].as<int>();
+  if (v < 0 || v >= theme_count()) {
     g_server.send(400, "application/json", "{\"error\":\"no such theme\"}");
     return;
   }
+  const uint8_t t = static_cast<uint8_t>(v);
   config_set_theme(t);
   char body[64];
   snprintf(body, sizeof body, "{\"theme\":%u}", static_cast<unsigned>(t));
