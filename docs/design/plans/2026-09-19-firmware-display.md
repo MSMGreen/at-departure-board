@@ -64,10 +64,10 @@ This is the first of three firmware plans. It covers the `ui` module and
   flash step below assumes this has just been done; ask the human to do it
   first.
 - **Native tests** need GCC on PATH. A new shell has it. In an older shell, prefix:
-  `export PATH="/c/Users/green/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin:$PATH"`
+  `export PATH="<your mingw64>/bin:$PATH"`
 - The Python suite (`python -m pytest`) must stay green after every task.
-- Commits: prose subject saying what changed and why, body as needed, ending
-  `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
+- Commits: prose subject saying what changed and why, body as needed.
+
 
 ## File Structure
 
@@ -285,9 +285,7 @@ Keep the paragraph about the ways it fails, and the capacitor note.
 
 ```bash
 git add platformio.ini src/backlight.h src/backlight.cpp src/main.cpp docs/hardware-notes.md
-git commit -m "Add the firmware project: ST7789 config, backlight PWM, pio upload that works
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "Add the firmware project: ST7789 config, backlight PWM, pio upload that works"
 ```
 
 ---
@@ -491,9 +489,7 @@ Expected: `7 test cases: 7 succeeded`.
 
 ```bash
 git add lib/core/src/color.h lib/core/src/color.cpp test/test_color/test_main.cpp
-git commit -m "Port palette arithmetic to C, pinned to the Python's values
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "Port palette arithmetic to C, pinned to the Python's values"
 ```
 
 ---
@@ -750,9 +746,7 @@ Expected: `8 test cases: 8 succeeded`.
 
 ```bash
 git add lib/core/src/layout.h lib/core/src/layout.cpp test/test_layout/test_main.cpp
-git commit -m "Port lane geometry to C, including Python's half-to-even rounding
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "Port lane geometry to C, including Python's half-to-even rounding"
 ```
 
 ---
@@ -910,9 +904,7 @@ Expected: `7 test cases: 7 succeeded`.
 
 ```bash
 git add lib/core/src/rng.h lib/core/src/shapes.h lib/core/src/shapes.cpp test/test_rng/test_main.cpp
-git commit -m "Port the scenery LCG and terrain profiles, pinned to Python's output
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "Port the scenery LCG and terrain profiles, pinned to Python's output"
 ```
 
 ---
@@ -1132,9 +1124,7 @@ Expected: `6 test cases: 6 succeeded`.
 
 ```bash
 git add lib/core/src/model.h lib/core/src/model.cpp test/test_model/test_main.cpp
-git commit -m "Port the board model to fixed-size C structs
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "Port the board model to fixed-size C structs"
 ```
 
 ---
@@ -1483,9 +1473,7 @@ git commit -m "Generate theme data for the firmware from the Python themes
 
 Same reasoning as the sprite export: one source of truth, so the simulator
 and the board cannot drift. A pytest now fails if any generated header is
-stale, which also covers src/sprites.h for the first time.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+stale, which also covers src/sprites.h for the first time."
 ```
 
 ---
@@ -1798,9 +1786,7 @@ Expected: every suite passes, `test_demo` with `7 test cases: 7 succeeded`.
 
 ```bash
 git add tools/export_sprites.py tests/test_export.py lib/core/src/demo.h lib/core/src/demo.cpp lib/core/src/scenes_data.h test/test_demo/test_main.cpp
-git commit -m "Generate DEMO_MODE scenes from scenes.py and play them in real time
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "Generate DEMO_MODE scenes from scenes.py and play them in real time"
 ```
 
 ---
@@ -2141,9 +2127,7 @@ reflash and recheck. Record anything the fonts cannot match.
 
 ```bash
 git add src/painter.h src/ui.h src/ui.cpp src/main.cpp
-git commit -m "Draw the board on the panel in bands: status bar, lanes, times, track
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "Draw the board on the panel in bands: status bar, lanes, times, track"
 ```
 
 ---
@@ -2436,9 +2420,7 @@ Expected: all suites pass.
 
 ```bash
 git add lib/core/src/sprite_ref.h src/sprite_table.h src/sprite_table.cpp src/ui.cpp test/test_sprite_ref/test_main.cpp
-git commit -m "Draw vehicles and scenery: the board now animates on the panel
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "Draw vehicles and scenery: the board now animates on the panel"
 ```
 
 ---
@@ -2513,7 +2495,5 @@ Expected: `[SUCCESS]`.
 
 ```bash
 git add docs/hardware-notes.md README.md platformio.ini
-git commit -m "Measure the display on hardware and document flashing the board
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "Measure the display on hardware and document flashing the board"
 ```

@@ -19,7 +19,7 @@
 - **15 fps must hold.** Ghibli frames already cost 58–59 ms of the 66 ms budget. `handleClient()` never runs on the draw loop.
 - Flash ceiling is 1,310,720 B (default partition table, unchanged). Baseline before this work: 992,053 B.
 - The panel font is ASCII only — no macrons in any string that can reach the display.
-- **Commit messages follow this repo's existing style:** sentence-case imperative subject, no `feat:`/`fix:` prefixes (see `git log`). Every commit ends with `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
+- **Commit messages follow this repo's existing style:** sentence-case imperative subject, no `feat:`/`fix:` prefixes (see `git log`).
 - **Flashing is a human step.** `upload_port = COM8`, and auto-reset does not work on this board. Before *every* `-t upload`, a human must put it in download mode: hold BOOT, tap EN, release BOOT. Tasks that flash are marked **FLASH**; the person driving this plan performs them and reads the panel, never a subagent.
 
 ---
@@ -128,9 +128,7 @@ Expected: PASS, including every pre-existing test. `stop_filter` is shared, so a
 
 ```bash
 git add lib/core/src/at_api.h lib/core/src/at_api.cpp test/test_at_api/test_main.cpp
-git commit -m "Parse stop_name so the portal can confirm a stop code
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "Parse stop_name so the portal can confirm a stop code"
 ```
 
 ---
@@ -471,9 +469,7 @@ git commit -m "Add a pure config schema with a validating parser
 Config holds every watch with its enabled flag rather than only the
 enabled ones, so disabling a watch in the UI stays distinct from
 deleting it. Validation rejects rather than truncates: a truncated stop
-code would show as a silently empty lane.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+code would show as a silently empty lane."
 ```
 
 ---
@@ -630,9 +626,7 @@ git add lib/core/src/config_schema.h lib/core/src/config_schema.cpp test/test_co
 git commit -m "Serialise config and publish enabled watches compacted
 
 cfg_publish hands out WatchConfig pointers into the Config it was given,
-so the header states the lifetime rule the callers have to keep.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+so the header states the lifetime rule the callers have to keep."
 ```
 
 ---
@@ -807,9 +801,7 @@ git commit -m "Back the configuration with NVS, seeded from watch_config.h
 
 config_save_json writes NVS and deliberately leaves the in-RAM config
 alone: the fetch task reads the watches on core 0 without a lock, so the
-new values are picked up by config_begin() after a reboot instead.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+new values are picked up by config_begin() after a reboot instead."
 ```
 
 ---
@@ -897,9 +889,7 @@ git commit -m "Read the watch list from config instead of the header
 watch_config.h is now the compiled default rather than the live
 configuration. The static_assert on N_WATCHES goes with it: the count is
 no longer known at compile time, and cfg_parse rejects more than
-MAX_WATCHES at the boundary instead.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+MAX_WATCHES at the boundary instead."
 ```
 
 ---
@@ -1042,9 +1032,7 @@ git commit -m "Serve config and themes from a core-0 portal task
 
 handleClient() cannot run on the draw loop: Ghibli frames already spend
 58-59 ms of a 66 ms budget, so a socket accept inside that would drop
-frames. The task sits on core 0 with the fetcher and yields every 2 ms.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+frames. The task sits on core 0 with the fetcher and yields every 2 ms."
 ```
 
 ---
@@ -1128,9 +1116,7 @@ git add src/portal.cpp
 git commit -m "Switch theme live from the portal
 
 The theme is the one value written at runtime: a uint8_t store is atomic
-and the draw loop reads it once per frame, so there is nothing to lock.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+and the draw loop reads it once per frame, so there is nothing to lock."
 ```
 
 ---
@@ -1231,9 +1217,7 @@ git add src/portal.cpp
 git commit -m "Confirm a stop code against AT before it is saved
 
 A typo would otherwise show as a silently empty lane, which is the
-failure mode hardware-notes.md already warns about.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+failure mode hardware-notes.md already warns about."
 ```
 
 ---
@@ -1319,9 +1303,7 @@ git commit -m "Save the config to NVS and restart to pick it up
 
 The response is flushed before ESP.restart() so the browser sees the 200,
 and the in-RAM config is left alone: the fetch task is reading it on the
-other core, and config_begin() re-reads NVS when nothing else is.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+other core, and config_begin() re-reads NVS when nothing else is."
 ```
 
 ---
@@ -1538,9 +1520,7 @@ git commit -m "Add the config page
 
 One self-contained file served straight from flash with send_P: nothing
 on the LAN can reach a CDN, and copying the page into a String would cost
-the largest free block the board watches.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+the largest free block the board watches."
 ```
 
 ---
@@ -1608,9 +1588,7 @@ git commit -m "Register at-board.local and show it at boot
 
 The IP is drawn beside the name because mDNS does not resolve on Windows
 without Bonjour. The boot screen uses time the board was already spending
-waiting for its first fetch.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+waiting for its first fetch."
 ```
 
 ---
@@ -1656,9 +1634,7 @@ git commit -m "Record what the portal actually cost
 hardware-notes predicted the portal would need huge_app.csv. It did not:
 the default partition table had room. Replaces the prediction with the
 measurement and points the README at at-board.local for stop and theme
-changes.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+changes."
 ```
 
 ---

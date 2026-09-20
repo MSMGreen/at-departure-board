@@ -75,12 +75,11 @@ surfaces, and a live frame loop.
 - Every `Board` the renderer sees is built by `build_board`, never assembled ad
   hoc in `src/`.
 - Native tests need GCC on PATH. A fresh shell has it; an older one needs
-  `export PATH="/c/Users/green/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin:$PATH"`.
+  `export PATH="<your mingw64>/bin:$PATH"`.
 - Uploading needs a human: hold BOOT, press and release EN, release BOOT, then
   `pio run -e <env> -t upload`. The controller does every flash, serial capture
   and on-glass check.
 - `python -m pytest` and `pio test -e native` stay green after every task.
-- Commits end with `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
 
 ## File Structure
 
@@ -349,9 +348,7 @@ git commit -m "Give a board a location and a watch a message, simulator first
 
 The data path needs lanes that can say 'check config' and 'check API key'
 without showing a time (spec 3a and 8), and a status bar whose location is
-not hardcoded. Both start in the Python, with a golden, then regenerate.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+not hardcoded. Both start in the Python, with a golden, then regenerate."
 ```
 
 ---
@@ -730,9 +727,7 @@ git commit -m "Implement Pacific/Auckland ourselves, because the host libc gets 
 Windows' UCRT placed 2026-09-28 12:00 NZDT at 11:00 UTC with the POSIX TZ
 string the spike used. The rules are 40 lines; the values are pinned against
 Python's zoneinfo, including both DST transitions and the GTFS noon-minus-12
-service-day rule that keeps noon at noon when the clocks move.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+service-day rule that keeps noon at noon when the clocks move."
 ```
 
 ---
@@ -1017,9 +1012,7 @@ git commit -m "Port the de-chunker to pure code, with the silent failure as a te
 The spike proved the algorithm on hardware but as an Arduino Stream, which
 cannot be tested natively. Behind a read callback it is testable, and one test
 pins the bug it exists to prevent: the same bytes fed straight to ArduinoJson
-parse as the number 4657 and report success.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+parse as the number 4657 and report success."
 ```
 
 ---
@@ -1569,9 +1562,7 @@ Every parser is exercised through its own ArduinoJson filter, so a filter that
 drops a field the board needs fails a test instead of the board. The awkward
 shapes from docs/at-api-notes.md are pinned: a stop_time_update that is an
 object rather than an array, a bus route with no colour, HUIA's #000000, and
-start_hour=0 which the API rejects outright.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+start_hour=0 which the API rejects outright."
 ```
 
 ---
@@ -2288,9 +2279,7 @@ The rules that decide what the board claims are the ones worth testing off the
 device: which direction actually reaches your destination, which delay to
 believe when the per-stop update is about someone else's stop, what to do with
 a trip the realtime feed threw in unasked, and when 'stale' is honest rather
-than merely overdue by a polling interval.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+than merely overdue by a polling interval."
 ```
 
 ---
@@ -2530,9 +2519,7 @@ git commit -m "Talk to AT over TLS pinned to DigiCert Global Root G2
 Pins the root rather than the leaf, which is reissued every six months, and
 never setInsecure(). Splits the build into a live esp32 env and an esp32_demo
 env so the demo stays flashable. The live build resolves both stop codes at
-boot and says so on serial.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+boot and says so on serial."
 ```
 
 **Controller, after the commit:** copy `spike/heap/src/secrets.h` to
@@ -2654,9 +2641,7 @@ git commit -m "Fetch on core 0 and publish a snapshot the renderer can read
 Every network call lives in one task pinned to the other core, because a TLS
 handshake takes longer than a frame and the board must keep animating (spec 8).
 The task owns the cadences, the backoff and the error surfaces; the render loop
-only ever copies a snapshot.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+only ever copies a snapshot."
 ```
 
 **Controller, after the commit:** flash `esp32` and capture 3 minutes of serial.
@@ -2716,9 +2701,7 @@ Run: `pio test -e native` → all pass.
 
 ```bash
 git add src/main.cpp
-git commit -m "Draw the live board: real departures, counting down between polls
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "Draw the live board: real departures, counting down between polls"
 ```
 
 **Controller, after the commit:** flash `esp32` and check with the human, against
@@ -2782,7 +2765,5 @@ Run: `pio run -e esp32` and `pio run -e esp32_demo` → [SUCCESS].
 
 ```bash
 git add docs/ README.md test/fixtures/
-git commit -m "Record what the live board measures and what the API really does
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "Record what the live board measures and what the API really does"
 ```
