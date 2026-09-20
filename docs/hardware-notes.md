@@ -1,8 +1,9 @@
 # Hardware and firmware notes — measured, not estimated
 
-Everything here was measured on the actual board on 2026-09-15 by the throwaway
-spike in `spike/heap/`. Where the design doc guessed a number, the measured one
-is recorded next to it.
+Everything here was measured on the actual board on 2026-09-15 by a throwaway
+spike (`spike/heap/`, removed once it had answered its question — the code is
+in the git history, last present at 026bc09). Where the design doc guessed a
+number, the measured one is recorded next to it.
 
 ## The board
 
@@ -69,7 +70,8 @@ was ever going to work. Do not "optimise" it into a full framebuffer later.
 The module is the common red "2.8\" TFT 240xRGBx320 V1.1" SPI board with an SD
 slot and a touch footprint (touch unpopulated). It is sold as ILI9341, and the
 design doc assumed that. The unit on hand has an **ST7789** controller. Found
-by bring-up spike `spike/display/`, 2026-09-19.
+by a bring-up spike (`spike/display/`, also removed — see the git history),
+2026-09-19.
 
 Wiring is exactly as in design doc §2, and it is right: nothing had to change.
 
