@@ -2,11 +2,13 @@ tools/out/
 .pio/
 .vscode/
 __pycache__/
+.pytest_cache/
+.DS_Store
 secrets.h
-
-# spike build artifacts
-spike/**/.pio/
 
 # agent scratch: worktrees and plan-execution ledgers
 .claude/worktrees/
 .superpowers/
+
+# models/build/*.stl IS committed, like src/sprites.h: printing one should not
+# require OpenSCAD. Re-render and commit it with any wedge.scad change.

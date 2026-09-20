@@ -1,0 +1,32 @@
+name: I built one
+description: Share a build, or tell us what the setup guide got wrong.
+labels: [build-report]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        The setup guide was written from one build, on one board, with one
+        panel. Every other build is new information.
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: What you used
+      placeholder: |
+        Board:
+        Panel (and which controller it turned out to be):
+        Case:
+    validations:
+      required: true
+
+  - type: textarea
+    id: friction
+    attributes:
+      label: What the guide got wrong, or didn't say
+      description: Wrong pin, missing step, a step that needed an extra trick.
+
+  - type: textarea
+    id: photo
+    attributes:
+      label: Photo
+      description: Optional, and entirely the point. Drag an image in.

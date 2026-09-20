@@ -8,10 +8,13 @@ time to arrival — it enters at the left twenty minutes out and pulls into the
 stop as the countdown reaches zero. The point is that you can read it from
 across a room without resolving any digits.
 
-Status: live data. The board fetches real AT departures and realtime delays
-over WiFi/TLS and draws the board from them, holding 15 fps with the network
-running. `DEMO_MODE` (synthetic departures, no network) still builds and is
-useful for a no-key bring-up.
+Status: live data, and configurable from a browser. The board fetches real AT
+departures and realtime delays over WiFi/TLS, draws the board from them at
+15 fps, and serves a setup page on your LAN for choosing stops and themes.
+`DEMO_MODE` (synthetic departures, no network) still builds and is useful for a
+no-key bring-up.
+
+![The board in two themes](docs/theme-preview.png)
 
 ## Try it without hardware
 
@@ -31,57 +34,95 @@ python tools/simulate.py --scene two_up --theme ghibli
 python tools/author_art.py               # regenerate the vehicle art
 ```
 
-## Flash the board
+## Build one
 
-Needs PlatformIO. Wiring is in the table below.
+Roughly an evening's work. **[docs/SETUP.md](docs/SETUP.md) is the full
+walkthrough** — parts, wiring, flashing, and pointing it at your own stops. The
+short version:
+
+| Part | What to get |
+|---|---|
+| Board | Any standard **ESP32 DevKit (WROOM-32)**. The unit here is an ESP32-D0WD-V3: 4 MB flash, no PSRAM, CH340 USB-serial |
+| Display | 2.8" 320x240 SPI panel, no touch needed — [the one used here](https://www.aliexpress.com/item/1005004557916570.html). Sold as ILI9341; the unit received was an **ST7789**, which the build flags already handle ([why](docs/hardware-notes.md)) |
+| Case | Printed from `models/src/wedge.scad` in this repo — a raked wedge with a snap-on back. Dimensions for both boards in [docs/enclosure.md](docs/enclosure.md), assembly in [docs/assembly.md](docs/assembly.md) |
+| Wiring | Nine jumper wires, or solder direct — table below |
+
+You also need a free [AT developer API key](https://dev-portal.at.govt.nz/),
+subscribed to **both** the GTFS and the Realtime products with the same key.
 
 ```bash
-pio test -e native               # firmware logic, on your PC (needs a C++ compiler)
-pio run -e esp32 -t upload       # the live board: needs src/secrets.h (below)
-pio run -e esp32_demo -t upload  # the demo: no WiFi, no API key
+python -m pip install -r requirements-dev.txt
+pio test -e native                       # firmware logic, on your PC (needs a C++ compiler)
+cp src/secrets.example.h src/secrets.h   # then fill in WiFi + AT key
+pio run -e esp32 -t upload               # the live board
+pio run -e esp32_demo -t upload          # the demo: no WiFi, no API key
 ```
 
-Before each upload: hold BOOT, tap EN, release BOOT.
+Before each upload: hold BOOT, tap EN, release BOOT. Auto-reset into the
+bootloader does not work on these boards, and `platformio.ini` is set up
+accordingly — see [docs/hardware-notes.md](docs/hardware-notes.md).
 
-`esp32` is the **live** build: it fetches real departures, so it needs
-`src/secrets.h` with your WiFi credentials and AT API key (see the next
-section) and will not compile without it. `esp32_demo` runs `DEMO_MODE`: every
-canonical state from the simulator, played in real time on the panel, no WiFi
-or API key needed (it still needs a `src/secrets.h` to exist; see below).
+`platformio.ini` does not name a serial port, so PlatformIO auto-detects one. If
+you have more than one board plugged in, pass it explicitly:
+
+```bash
+pio run -e esp32 -t upload --upload-port COM8      # /dev/ttyUSB0 on Linux
+```
 
 ## Point it at your own stops
 
-There's no setup portal yet (spec §3 — coming later), so for now this is two
-files:
+Once the board is on your WiFi, **open `http://<board-ip>/` in a browser** on the
+same network. The setup page holds the location name, the theme, and up to four
+watches. Save and restart writes them to NVS and reboots the board, which takes
+a couple of seconds.
 
-1. Copy `src/secrets.example.h` to `src/secrets.h` and fill in your WiFi
-   credentials and AT API key. `src/secrets.h` is gitignored — **never commit
-   it.**
-2. Edit `src/watch_config.h`: stop codes are the numbers on the pole, and
-   `toward_stop_code` is the stop you're travelling toward, not a direction
-   (direction is derived at every refresh — see `docs/at-api-notes.md`).
+The board prints its IP to the serial monitor at boot (`pio device monitor`),
+and it is also the new ESP32 client in your router's device list:
 
-The bus watch here pins route `20` on purpose: stop 8213 is also served by
-`22R`/`22N`, which the owner doesn't take, and AT's own app lists every route
-that stops there. A stop served only by routes you'd actually board can leave
-`route_short_name` empty, as the train watch does.
+```
+wifi: connected, ip 192.168.1.42 rssi -54
+```
 
-For a no-network demo of the same board, `pio run -e esp32_demo -t upload`
-builds with `DEMO_MODE` instead: no WiFi or API key is used. The network
-sources are still compiled, so `src/secrets.h` must exist, but an unedited
-copy of `src/secrets.example.h` is enough.
+Each watch is four fields:
+
+| Field | Meaning |
+|---|---|
+| Label | What the lane is called on the panel, e.g. `to Wynyard Quarter` (24 characters) |
+| Stop code | The number on the pole, e.g. `8213`. **Check** confirms it against AT and shows you the stop's name |
+| Route | A route to pin, e.g. `20`. Leave it empty for "any route that stops here" |
+| Toward stop | The stop you are travelling *toward*, never a direction — direction is derived at every refresh ([why](docs/at-api-notes.md)) |
+
+Pin a route when the stop also serves services you would never board: stop 8213
+here is served by `22R`/`22N` as well, so that watch pins `20`. A stop served
+only by routes you'd actually take can leave Route empty, as a rail watch does
+— that is also what carries a rail watch through a line rename.
+
+WiFi credentials and the API key are **not** in the setup page. They are
+compiled in from `src/secrets.h`, which is gitignored, so changing networks
+means a re-flash. `src/watch_config.h` holds the watches the board seeds NVS
+with on its first boot, and is only consulted then.
+
+### The setup page is unauthenticated
+
+It is plain HTTP on port 80 with no password, so anyone on your LAN can change
+the board's stops or reboot it. That is a deliberate trade for a device with no
+keyboard on a home network — the page exposes no credentials and the board
+stores nothing sensitive — but do not put this on an untrusted or guest
+network, and do not forward a port to it.
 
 ## Development
 
 ```bash
-python -m pytest                # everything
+python -m pytest                # the renderer and the tools
+pio test -e native              # the firmware logic (needs a C++ compiler)
 python tools/regolden.py        # ONLY when a render change is intended
 python tools/export_sprites.py  # regenerate src/sprites.h after editing sprites
 ```
 
 Renders are compared byte-exact against `tests/golden/`. A failing golden test
 means the render changed — if that was intended, regenerate and commit the
-goldens in the same commit as the change.
+goldens in the same commit as the change. Both suites run in CI on every push
+and pull request. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
 
 ## Layout
 
@@ -96,6 +137,8 @@ goldens in the same commit as the change.
 | Drawing | `tools/board/render.py` |
 | The canonical board states | `tools/board/scenes.py` |
 | Export sprites to C | `tools/export_sprites.py` |
+| Firmware logic, no Arduino headers | `lib/core/src/` |
+| Firmware wiring: network, portal, panel | `src/` |
 
 Sprites are authored as role grids — `B` for body, `W` for window — rather than
 literal colours, which is what lets one bus sprite render in whatever colour its
@@ -106,7 +149,7 @@ Python.
 Art is never typed by hand. Edit `tools/author_art.py`, which draws it
 parametrically, then regenerate.
 
-## Hardware
+## Wiring
 
 ESP32 dev board (WROOM-32) and a 2.8" 320x240 ST7789 SPI panel, no touch (sold as
 ILI9341 — see `docs/hardware-notes.md`).
@@ -123,17 +166,35 @@ ILI9341 — see `docs/hardware-notes.md`).
 | LED | GPIO32 |
 | SDO / MISO | GPIO19 |
 
-Drive the backlight from GPIO32 rather than 3V3 — dimming and quiet hours depend
-on it being PWM-able.
+Drive the backlight from GPIO32 rather than 3V3: there it is PWM-able, which is
+what lets the panel dim rather than only switch off.
 
 ## Documentation
 
-- `docs/at-api-notes.md` — the AT API as it actually behaves, verified against
-  live endpoints. **Read this before touching the network code**; it differs
-  from AT's own documentation in five places, including one that would make the
-  board re-resolve every stop every night.
-- `docs/superpowers/specs/` — design.
-- `docs/superpowers/plans/` — implementation plans.
+- [docs/SETUP.md](docs/SETUP.md) — build one from parts, start to finish.
+- [docs/at-api-notes.md](docs/at-api-notes.md) — the AT API as it actually
+  behaves, verified against live endpoints. **Read this before touching the
+  network code**; it differs from AT's own documentation in five places,
+  including one that would make the board re-resolve every stop every night.
+- [docs/hardware-notes.md](docs/hardware-notes.md) — measured heap, the flashing
+  dance, and why the panel is an ST7789.
+- [docs/enclosure.md](docs/enclosure.md) — every dimension of the case and the
+  two boards, and where each number came from.
+- [docs/assembly.md](docs/assembly.md) — wiring and fitting it all into the
+  printed case.
+- [docs/design/](docs/design/) — the specs and implementation plans each
+  feature was built from, kept as the record of why the code is shaped the way
+  it is.
+
+## Data and attribution
+
+Departure data comes from [Auckland Transport's developer
+API](https://dev-portal.at.govt.nz/) and is used under AT's developer terms —
+check those terms before redistributing anything you build on it. The JSON under
+`test/fixtures/` is captured AT API output, trimmed and used as test input.
+
+This project is not affiliated with, endorsed by, or supported by Auckland
+Transport.
 
 ## Licence
 

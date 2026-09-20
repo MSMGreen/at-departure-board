@@ -1,8 +1,10 @@
 #pragma once
 #include "live.h"
 
-// The watches, until the setup portal lands (spec 3). Stop codes are the
-// numbers on the pole; nothing here is secret.
+// The watches the board seeds NVS with on its FIRST boot, and only then:
+// after that the setup page at http://<board-ip>/ owns the config (spec 3).
+// Edit these only to change what a freshly flashed board starts life with.
+// Stop codes are the numbers on the pole; nothing here is secret.
 //
 // route_short_name "" means any route, which is what carries a rail watch
 // through a line rename - see docs/at-api-notes.md on the CRL changeover.
