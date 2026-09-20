@@ -20,7 +20,7 @@ buffer cannot be allocated on this chip.
 TFT_eSPI 2.5.43, Unity for native tests (GCC 16 via WinLibs), Python 3.10 +
 pytest for the exporter.
 
-**Spec:** `docs/superpowers/specs/2026-09-06-at-departure-board-design.md`
+**Spec:** `docs/design/specs/2026-09-06-at-departure-board-design.md`
 (§2 hardware, §4 architecture, §7 screen, §9 `DEMO_MODE`). Also read
 `docs/hardware-notes.md`, which records measured facts that override the spec.
 

@@ -18,7 +18,7 @@ is what makes the countdown tick smoothly between polls.
 **Tech Stack:** PlatformIO, `espressif32@7.1.3` (Arduino core 2.0.17),
 TFT_eSPI 2.5.43, ArduinoJson 7.4.3 (native and device), Unity, pytest.
 
-**Spec:** `docs/superpowers/specs/2026-09-06-at-departure-board-design.md`
+**Spec:** `docs/design/specs/2026-09-06-at-departure-board-design.md`
 (§3a derived direction, §5 data flow and time handling, §6 stop resolution,
 §8 degradation). `docs/at-api-notes.md` is the verified record of how the API
 actually behaves and outranks the spec where they differ.
@@ -2739,7 +2739,7 @@ AT's own app or journeyplanner.at.govt.nz for stop 8213 and Kingsland station:
 ### Task 9: Measure, and write it down
 
 **Files:**
-- Modify: `docs/hardware-notes.md`, `docs/at-api-notes.md`, `README.md`, `docs/superpowers/specs/2026-09-06-at-departure-board-design.md`
+- Modify: `docs/hardware-notes.md`, `docs/at-api-notes.md`, `README.md`, `docs/design/specs/2026-09-06-at-departure-board-design.md`
 - Add: `test/fixtures/post-crl/stops_{8213,122,133,1060}.json`, `test/fixtures/post-crl/stops_unknown.json`
 
 - [ ] **Step 1: Measure on the board** over at least 10 minutes of live running:

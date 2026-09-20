@@ -8,7 +8,7 @@
 
 **Tech Stack:** C++17 (`-std=gnu++17`), PlatformIO, Arduino-ESP32 (`espressif32@7.1.3`), ArduinoJson 7.4.3 (already linked), Arduino `WebServer` + `Preferences` + `ESPmDNS` (bundled with the framework, no new `lib_deps`), Unity for native tests.
 
-**Spec:** `docs/superpowers/specs/2026-09-19-config-portal-design.md` (committed as `c962ba3`)
+**Spec:** `docs/design/specs/2026-09-19-config-portal-design.md` (committed as `c962ba3`)
 
 ## Global Constraints
 
@@ -1622,8 +1622,8 @@ The spec's appendix predicted the cost. This closes the loop with the real numbe
 **Files:**
 - Modify: `docs/hardware-notes.md:293` (the "Flash headroom" section)
 - Modify: `README.md:54-60` (the "no setup portal yet" paragraph)
-- Modify: `docs/superpowers/specs/2026-09-06-at-departure-board-design.md:8` (the status line)
-- Modify: `docs/superpowers/specs/2026-09-19-config-portal-design.md` (status, and the appendix's real figure)
+- Modify: `docs/design/specs/2026-09-06-at-departure-board-design.md:8` (the status line)
+- Modify: `docs/design/specs/2026-09-19-config-portal-design.md` (status, and the appendix's real figure)
 
 - [ ] **Step 1: Take the final measurements**
 

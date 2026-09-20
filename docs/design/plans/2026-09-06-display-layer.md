@@ -17,7 +17,7 @@ cannot drift.
 
 **Tech Stack:** Python 3.10, Pillow 9.4, pytest. No PlatformIO in this plan.
 
-**Spec:** `docs/superpowers/specs/2026-09-06-at-departure-board-design.md`
+**Spec:** `docs/design/specs/2026-09-06-at-departure-board-design.md`
 
 ## Global Constraints
 
@@ -1727,8 +1727,8 @@ goldens in the same commit.
 - `docs/at-api-notes.md` — the AT API as it actually behaves, verified against
   live endpoints. Read this before touching the network code; it differs from
   AT's own documentation in five places.
-- `docs/superpowers/specs/` — design.
-- `docs/superpowers/plans/` — implementation plans.
+- `docs/design/specs/` — design.
+- `docs/design/plans/` — implementation plans.
 
 ## Licence
 

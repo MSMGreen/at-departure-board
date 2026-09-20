@@ -15,7 +15,7 @@ generated), so no task in this plan retypes pixel grids.
 
 **Tech Stack:** Python 3.10, Pillow 9.4, pytest. No firmware in this plan.
 
-**Spec:** `docs/superpowers/specs/2026-09-06-at-departure-board-design.md` §7.
+**Spec:** `docs/design/specs/2026-09-06-at-departure-board-design.md` §7.
 
 ## Why this replaces the earlier six-theme version
 
