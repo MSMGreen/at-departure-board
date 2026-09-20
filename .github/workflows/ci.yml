@@ -9,6 +9,7 @@ jobs:
   renderer:
     name: Renderer and tools (pytest)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,11 +20,12 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-dev.txt
       - run: python -m pip install -r requirements-dev.txt
-      - run: python -m pytest
+      - run: python -m pytest -v
 
   firmware-tests:
     name: Firmware logic (pio test -e native)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,6 +43,7 @@ jobs:
   firmware-build:
     name: Firmware builds (esp32, esp32_demo)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
