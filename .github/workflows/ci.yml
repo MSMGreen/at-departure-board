@@ -17,6 +17,7 @@ jobs:
           # in requirements-dev.txt has to be the one it was built against.
           python-version: '3.11'
           cache: pip
+          cache-dependency-path: requirements-dev.txt
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m pytest
 
@@ -29,6 +30,7 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
+          cache-dependency-path: requirements-dev.txt
       - uses: actions/cache@v4
         with:
           path: ~/.platformio
@@ -45,6 +47,7 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
+          cache-dependency-path: requirements-dev.txt
       - uses: actions/cache@v4
         with:
           path: ~/.platformio
