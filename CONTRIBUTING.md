@@ -37,6 +37,14 @@ the output changed.
   them in the same commit as the change that caused them. A golden update on
   its own, or a render change without one, is very hard to review.
 
+**The goldens are Windows-only.** `tools/board/render.py` loads Arial and
+Consolas from `%WINDIR%/Fonts`, and falls back to Pillow's default font when it
+cannot find them — quietly, so on Linux or macOS the render still succeeds and
+simply does not match. `tests/test_render.py` will fail there through no fault
+of yours. CI runs that job on a Windows runner for the same reason. If you are
+on another platform, say so in the PR and let CI judge the goldens; the rest of
+the suite is platform-independent.
+
 ## Generated files
 
 Some committed files are generated. Edit the source, then regenerate:

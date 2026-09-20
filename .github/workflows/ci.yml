@@ -8,7 +8,10 @@ on:
 jobs:
   renderer:
     name: Renderer and tools (pytest)
-    runs-on: ubuntu-latest
+    # Windows, not Linux: tools/board/render.py loads Arial and Consolas from
+    # %WINDIR%/Fonts and silently falls back to Pillow's default font when they
+    # are missing, so the byte-exact goldens only reproduce on Windows.
+    runs-on: windows-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
