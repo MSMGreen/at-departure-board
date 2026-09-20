@@ -1,5 +1,7 @@
 # AT Departure Board
 
+[![CI](https://github.com/MSMGreen/at-departure-board/actions/workflows/ci.yml/badge.svg)](https://github.com/MSMGreen/at-departure-board/actions/workflows/ci.yml)
+
 An ESP32 + 2.8" TFT that shows when the next bus and train actually leave, using
 Auckland Transport's realtime feed.
 
