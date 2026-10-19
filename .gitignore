@@ -12,3 +12,13 @@ secrets.h
 
 # models/build/*.stl IS committed, like src/sprites.h: printing one should not
 # require OpenSCAD. Re-render and commit it with any wedge.scad change.
+
+# android/: the widget (docs/design/specs/2026-10-18-android-widget-design.md).
+# local.properties holds the AT key and the signing keystore's location.
+android/local.properties
+android/.gradle/
+android/.kotlin/
+android/.idea/
+android/**/build/
+*.jks
+*.keystore
