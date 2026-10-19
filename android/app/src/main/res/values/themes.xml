@@ -1,0 +1,4 @@
+<resources>
+    <!-- Compose draws the screens; this only sets the window before it does. -->
+    <style name="Theme.Nextdeparture" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

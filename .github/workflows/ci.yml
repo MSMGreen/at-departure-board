@@ -64,3 +64,17 @@ jobs:
       - run: cp src/secrets.example.h src/secrets.h
       - run: pio run -e esp32
       - run: pio run -e esp32_demo
+
+  widget-core:
+    name: Widget logic (gradle :core:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :core:test :app:assembleDebug
+        working-directory: android
