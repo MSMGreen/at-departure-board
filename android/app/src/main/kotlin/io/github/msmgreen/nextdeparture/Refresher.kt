@@ -23,9 +23,11 @@ object Refresher {
     suspend fun refresh(context: Context, force: Boolean) {
         mutex.withLock {
             val store = Store(context)
-            val place = store.config()?.places?.firstOrNull() ?: return@withLock
-            val cache = store.cache()
             val now = System.currentTimeMillis() / 1000
+            // Only the current place is fetched; another becomes current at a
+            // window boundary, and is fetched then (widget spec 4).
+            val place = store.place(now) ?: return@withLock
+            val cache = store.cache()
             val last = cache.watch
             val recent = last != null && last.key == place.watch.key && now - last.lastOk < DEBOUNCE_S
             if (!force && recent) return@withLock
@@ -33,5 +35,6 @@ object Refresher {
             store.saveCache(next)
         }
         DepartureWidget.renderAll(context)
+        CommuteService.update(context)
     }
 }

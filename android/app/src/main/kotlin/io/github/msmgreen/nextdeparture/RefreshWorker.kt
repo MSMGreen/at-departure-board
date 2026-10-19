@@ -17,6 +17,9 @@ import java.util.concurrent.TimeUnit
 class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         Refresher.refresh(applicationContext, force = inputData.getBoolean(KEY_FORCE, false))
+        // Re-armed on every run, so a boundary alarm lost to a force-stop or a
+        // cleared alarm heals within 30 minutes.
+        CommuteAlarm.arm(applicationContext)
         return Result.success()
     }
 

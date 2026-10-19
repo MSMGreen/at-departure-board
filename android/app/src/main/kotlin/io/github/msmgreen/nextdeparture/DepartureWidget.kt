@@ -57,12 +57,12 @@ class DepartureWidget : AppWidgetProvider() {
             val ids = manager.getAppWidgetIds(ComponentName(context, DepartureWidget::class.java))
             if (ids.isEmpty()) return
             val store = Store(context)
-            val place = store.config()?.places?.firstOrNull()
+            val now = System.currentTimeMillis() / 1000
+            val place = store.place(now)
             if (place == null) {
                 manager.updateAppWidget(ids, unconfigured(context))
                 return
             }
-            val now = System.currentTimeMillis() / 1000
             val watch = store.cache().watch?.takeIf { it.key == place.watch.key }
             val view = widgetView(place, watch, now, DateFormat.is24HourFormat(context))
             scheduleRender(context, view.nextRenderAt)
@@ -137,6 +137,9 @@ class DepartureWidget : AppWidgetProvider() {
             r.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(context, 0, settings, PendingIntent.FLAG_IMMUTABLE))
             return r
         }
+
+        // A tap's refresh, for the commute notification's Refresh action too.
+        fun refreshIntent(context: Context): PendingIntent = broadcast(context, ACTION_REFRESH)
 
         private fun show(r: RemoteViews, vararg ids: Int) = ids.forEach { r.setViewVisibility(it, View.VISIBLE) }
 
