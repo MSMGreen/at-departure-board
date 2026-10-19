@@ -55,6 +55,30 @@
                 android:layout_marginStart="6dp"
                 android:maxLines="1"
                 android:textSize="12sp" />
+
+            <!-- In as_of's place while the view is fresh: the board's ghibli
+                 cat-bus, trotting. The launcher flips the frames itself, as it
+                 ticks the countdown, so no process runs for it. -->
+            <ViewFlipper
+                android:id="@+id/catbus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:autoStart="true"
+                android:flipInterval="450"
+                android:importantForAccessibility="no"
+                android:visibility="gone">
+
+                <ImageView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:src="@drawable/catbus_1" />
+
+                <ImageView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:src="@drawable/catbus_2" />
+            </ViewFlipper>
         </LinearLayout>
 
         <LinearLayout

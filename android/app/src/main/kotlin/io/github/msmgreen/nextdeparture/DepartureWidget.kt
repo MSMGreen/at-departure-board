@@ -112,6 +112,9 @@ class DepartureWidget : AppWidgetProvider() {
             // these on top of the views it already has, such as the unconfigured
             // ones, which hide the title.
             show(r, R.id.title)
+            // The cat-bus trots while the view is fresh and gives way to
+            // "as of" once it is stale; the stale render is already armed.
+            if (v.stale) hide(r, R.id.catbus) else show(r, R.id.catbus)
             if (compact) {
                 hide(r, R.id.as_of, R.id.detail, R.id.note)
             } else {
@@ -129,7 +132,7 @@ class DepartureWidget : AppWidgetProvider() {
             r.setTextViewText(R.id.place, context.getString(R.string.app_name))
             r.setTextViewText(R.id.message, context.getString(R.string.tap_to_set_up))
             show(r, R.id.message)
-            hide(r, R.id.leave_label, R.id.countdown, R.id.title, R.id.as_of, R.id.detail, R.id.note)
+            hide(r, R.id.leave_label, R.id.countdown, R.id.title, R.id.as_of, R.id.detail, R.id.note, R.id.catbus)
             val settings = Intent(context, SettingsActivity::class.java)
             r.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(context, 0, settings, PendingIntent.FLAG_IMMUTABLE))
             return r
