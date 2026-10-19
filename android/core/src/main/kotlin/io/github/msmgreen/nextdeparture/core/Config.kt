@@ -4,6 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import java.time.LocalTime
 
 // Each phone's configuration (widget spec 3). One JSON document with a "v"
 // field, as the board stores its config in NVS (config portal spec 4), and with
@@ -12,6 +13,8 @@ import kotlinx.serialization.json.Json
 
 const val CONFIG_VERSION = 1
 const val MAX_PLACES = 4 // matches the board's MAX_WATCHES
+const val MAX_WINDOWS = 4
+const val WEEKDAYS = 0b0011111 // Monday to Friday; bit 0 is Monday
 
 @Serializable
 data class WatchConfig(
@@ -34,8 +37,46 @@ data class Place(
     @SerialName("radius_m") val radiusM: Int = 200,
 )
 
+// A commute window (widget spec 3, 9): local Pacific/Auckland wall-clock times,
+// [start, end) on the days in the mask, never crossing midnight.
 @Serializable
-data class Config(val v: Int = CONFIG_VERSION, val places: List<Place>)
+data class CommuteWindow(
+    val days: Int = WEEKDAYS,
+    val start: String, // "07:30"
+    val end: String, // "08:30"
+    @SerialName("default_place") val defaultPlace: Int = 0, // index into places
+) {
+    // Only for a validated window: validate() rejects a time that will not parse.
+    val startTime: LocalTime get() = parseClock(start)!!
+    val endTime: LocalTime get() = parseClock(end)!!
+}
+
+// A window's default place after the place at removed is deleted: the same
+// place where it survives, else the first.
+fun placeAfterRemoval(place: Int, removed: Int): Int = when {
+    place == removed -> 0
+    place > removed -> place - 1
+    else -> place
+}
+
+// "07:30", strictly: two ASCII digits, a colon, two digits.
+fun parseClock(s: String): LocalTime? {
+    if (s.length != 5 || s[2] != ':') return null
+    if (!s.removeRange(2, 3).all { it in '0'..'9' }) return null
+    val h = s.substring(0, 2).toInt()
+    val m = s.substring(3, 5).toInt()
+    if (h > 23 || m > 59) return null
+    return LocalTime.of(h, m)
+}
+
+// Windows arrived in phase 2 with a default, so a phase 1 config still reads
+// back and "v" stays 1.
+@Serializable
+data class Config(
+    val v: Int = CONFIG_VERSION,
+    val places: List<Place>,
+    val windows: List<CommuteWindow> = emptyList(),
+)
 
 enum class ConfigError(val text: String) {
     BadJson("could not read the settings"),
@@ -50,6 +91,10 @@ enum class ConfigError(val text: String) {
     WalkMin("walk time is 0 to 30 minutes"),
     Radius("radius is 100 to 1000 m"),
     Coordinates("set both latitude and longitude, or neither"),
+    TooManyWindows("at most four commute windows"),
+    WindowDays("a window needs at least one day"),
+    WindowTime("a window is HH:MM to a later HH:MM the same day"),
+    WindowPlace("a window's place must be one of the places"),
 }
 
 sealed interface ConfigResult {
@@ -83,6 +128,14 @@ object ConfigCodec {
             if (p.radiusM !in 100..1000) return ConfigError.Radius
             if ((p.lat == null) != (p.lon == null)) return ConfigError.Coordinates
             if (p.lat != null && (p.lat !in -90.0..90.0 || p.lon!! !in -180.0..180.0)) return ConfigError.Coordinates
+        }
+        if (c.windows.size > MAX_WINDOWS) return ConfigError.TooManyWindows
+        for (w in c.windows) {
+            if (w.days !in 1..0b1111111) return ConfigError.WindowDays
+            val start = parseClock(w.start) ?: return ConfigError.WindowTime
+            val end = parseClock(w.end) ?: return ConfigError.WindowTime
+            if (!start.isBefore(end)) return ConfigError.WindowTime
+            if (w.defaultPlace !in c.places.indices) return ConfigError.WindowPlace
         }
         return null
     }
