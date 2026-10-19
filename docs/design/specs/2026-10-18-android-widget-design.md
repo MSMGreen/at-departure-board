@@ -178,10 +178,12 @@ At 2×1 it keeps the route and the countdown only.
   shown, and that precision is the chronometer's, not the data's.
 - **The widget re-renders locally** (no network) at `leave_by`, so the next
   catchable departure takes over, and at the moment the data turns stale
-  (§10), so "live" never outlasts its evidence. These are inexact alarms: they
-  are deferred while the phone dozes and delivered when it wakes, which is the
-  only time anyone looks. If one is late, the chronometer runs past zero and
-  shows `−0:30`, which reads correctly as "you are 30 s late to leave".
+  (§10), so "live" never outlasts its evidence. These are exact alarms when
+  *Alarms & reminders* is allowed, because an inexact alarm may arrive as late
+  as three quarters of its delay. Neither kind fires while the phone dozes;
+  both are delivered when it wakes, which is the only time anyone looks. If one
+  is late, the chronometer runs past zero and shows `−0:30`, which reads
+  correctly as "you are 30 s late to leave".
 
 Tap targets:
 
@@ -332,7 +334,7 @@ Permissions:
 | `INTERNET` | AT |
 | `ACCESS_FINE_LOCATION`, `ACCESS_BACKGROUND_LOCATION` | Geofences require both; the second is "Allow all the time" |
 | `POST_NOTIFICATIONS` | Commute notification |
-| `SCHEDULE_EXACT_ALARM` | Window boundaries. Granted by the user under *Alarms & reminders*. Without it, boundaries fall back to `setWindow` with a 5-minute window and the setup check says so |
+| `SCHEDULE_EXACT_ALARM` | The widget's re-render (§6) and window boundaries (§9). Granted by the user under *Alarms & reminders*. Without it both fall back to inexact alarms — Android 12+ stretches a `setWindow` window to at least 10 minutes — and the setup check says so |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE` | Commute mode |
 | `RECEIVE_BOOT_COMPLETED` | Re-arm after reboot |
 
@@ -463,8 +465,9 @@ Windows are tested by setting one to start two minutes ahead.
 ## Phasing
 
 1. **The widget.** `core` port and its tests, one place from settings, walk
-   time, the catchable rule, periodic and tap refresh, freshness, the setup
-   check, the CI job.
+   time, the catchable rule, periodic and tap refresh, freshness and the exact
+   re-render alarm, the setup check, the CI job. Planned in
+   `docs/design/plans/2026-10-19-android-widget-phase-1.md`.
 2. **Commute mode.** Windows, boundary alarms, the service, screen-on refresh,
    the notification, `Not today`. Windows' default places switch home and work
    by time of day from here on.
