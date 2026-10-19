@@ -108,8 +108,17 @@ class DepartureWidget : AppWidgetProvider() {
                 show(r, R.id.message)
                 hide(r, R.id.leave_label, R.id.countdown)
             }
-            if (compact) hide(r, R.id.as_of, R.id.detail, R.id.note)
-            else if (v.note == null) hide(r, R.id.note) else show(r, R.id.note)
+            // Every view's visibility is set on every render: a host may apply
+            // these on top of the views it already has, such as the unconfigured
+            // ones, which hide the title.
+            show(r, R.id.title)
+            if (compact) {
+                hide(r, R.id.as_of, R.id.detail, R.id.note)
+            } else {
+                show(r, R.id.detail)
+                if (v.asOf == null) hide(r, R.id.as_of) else show(r, R.id.as_of)
+                if (v.note == null) hide(r, R.id.note) else show(r, R.id.note)
+            }
 
             r.setOnClickPendingIntent(R.id.root, broadcast(context, ACTION_REFRESH))
             return r
