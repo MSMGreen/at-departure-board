@@ -1126,7 +1126,7 @@ class LiveTest {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `./gradlew :core:test`
-Expected: FAIL to compile — `Unresolved reference 'tripServes'`.
+Expected: FAIL to compile — `Unresolved reference 'LiveRow'`.
 
 - [ ] **Step 3: Write `Live.kt`**
 
@@ -2062,7 +2062,7 @@ class FetcherTest {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `./gradlew :core:test`
-Expected: FAIL to compile — `Unresolved reference 'AtHttp'`.
+Expected: FAIL to compile — `Unresolved reference 'HttpResult'`.
 
 - [ ] **Step 3: Write `Fetcher.kt`**
 
