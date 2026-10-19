@@ -57,12 +57,12 @@ class DepartureWidget : AppWidgetProvider() {
             val ids = manager.getAppWidgetIds(ComponentName(context, DepartureWidget::class.java))
             if (ids.isEmpty()) return
             val store = Store(context)
-            val place = store.config()?.places?.firstOrNull()
+            val now = System.currentTimeMillis() / 1000
+            val place = store.place(now)
             if (place == null) {
                 manager.updateAppWidget(ids, unconfigured(context))
                 return
             }
-            val now = System.currentTimeMillis() / 1000
             val watch = store.cache().watch?.takeIf { it.key == place.watch.key }
             val view = widgetView(place, watch, now, DateFormat.is24HourFormat(context))
             scheduleRender(context, view.nextRenderAt)
