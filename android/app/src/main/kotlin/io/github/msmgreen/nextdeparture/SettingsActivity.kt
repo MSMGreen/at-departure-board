@@ -13,13 +13,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -31,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -41,16 +46,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.msmgreen.nextdeparture.core.AtParse
 import io.github.msmgreen.nextdeparture.core.AtUrls
+import io.github.msmgreen.nextdeparture.core.CommuteWindow
 import io.github.msmgreen.nextdeparture.core.Config
 import io.github.msmgreen.nextdeparture.core.ConfigCodec
+import io.github.msmgreen.nextdeparture.core.MAX_PLACES
+import io.github.msmgreen.nextdeparture.core.MAX_WINDOWS
 import io.github.msmgreen.nextdeparture.core.Place
+import io.github.msmgreen.nextdeparture.core.WEEKDAYS
 import io.github.msmgreen.nextdeparture.core.WatchConfig
+import io.github.msmgreen.nextdeparture.core.placeAfterRemoval
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// One place in phase 1: the watch, the walk time, and the setup check. Also the
-// widget's configure activity (res/xml/departure_widget_info.xml).
+// Places, each with its watch and walk time; commute windows; and the setup
+// check. Also the widget's configure activity (res/xml/departure_widget_info.xml).
 class SettingsActivity : ComponentActivity() {
     // Bumped on every resume: each setup fix happens on another app's screen.
     private val resumes = mutableIntStateOf(0)
@@ -72,7 +82,7 @@ class SettingsActivity : ComponentActivity() {
                         Modifier.safeDrawingPadding().padding(16.dp).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        PlaceForm(Store(this@SettingsActivity))
+                        ConfigForm(Store(this@SettingsActivity))
                         HorizontalDivider()
                         SetupCheck(resumes.intValue)
                     }
@@ -87,41 +97,79 @@ class SettingsActivity : ComponentActivity() {
     }
 }
 
+// The form's copy of a place, as typed. base keeps what this form does not
+// edit - coordinates and radius, which phase 3 sets.
+private data class PlaceDraft(
+    val name: String = "",
+    val label: String = "",
+    val stop: String = "",
+    val route: String = "",
+    val toward: String = "",
+    val walk: String = "5",
+    val base: Place? = null,
+) {
+    fun toPlace(): Place = (base ?: Place("", WatchConfig("", "", "", ""))).copy(
+        name = name.trim(),
+        watch = WatchConfig(label.trim(), stop.trim(), route.trim(), toward.trim()),
+        walkMin = walk.toIntOrNull() ?: -1, // -1 fails validation, as it should
+    )
+
+    companion object {
+        fun of(p: Place) = PlaceDraft(
+            p.name, p.watch.label, p.watch.stopCode, p.watch.routeShortName, p.watch.towardStopCode, p.walkMin.toString(), p,
+        )
+    }
+}
+
+private data class WindowDraft(val days: Int = WEEKDAYS, val start: String = "07:30", val end: String = "08:30", val place: Int = 0) {
+    fun toWindow() = CommuteWindow(days, start.trim(), end.trim(), place)
+}
+
+private val DAY_LETTERS = listOf("M", "T", "W", "T", "F", "S", "S") // bit 0 is Monday
+
+// Places and commute windows, saved as one config. ConfigCodec.validate is the
+// only judge of it; the form never second-guesses it.
 @Composable
-private fun PlaceForm(store: Store) {
+private fun ConfigForm(store: Store) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf("Home") }
-    var label by remember { mutableStateOf("") }
-    var stopCode by remember { mutableStateOf("") }
-    var route by remember { mutableStateOf("") }
-    var toward by remember { mutableStateOf("") }
-    var walk by remember { mutableStateOf("5") }
+    val places = remember { mutableStateListOf(PlaceDraft(name = "Home")) }
+    val windows = remember { mutableStateListOf<WindowDraft>() }
     var status by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        val p = store.config()?.places?.firstOrNull() ?: return@LaunchedEffect
-        name = p.name
-        label = p.watch.label
-        stopCode = p.watch.stopCode
-        route = p.watch.routeShortName
-        toward = p.watch.towardStopCode
-        walk = p.walkMin.toString()
+        val c = store.config() ?: return@LaunchedEffect
+        places.clear()
+        places.addAll(c.places.map(PlaceDraft::of))
+        windows.clear()
+        windows.addAll(c.windows.map { WindowDraft(it.days, it.start, it.end, it.defaultPlace) })
     }
 
-    Text("Departure", style = MaterialTheme.typography.titleLarge)
-    OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Place name") })
-    OutlinedTextField(label, { label = it }, Modifier.fillMaxWidth(), label = { Text("Label, e.g. to Wynyard Quarter") })
-    StopField("Stop code (the number on the pole)", stopCode) { stopCode = it }
-    OutlinedTextField(route, { route = it }, Modifier.fillMaxWidth(), label = { Text("Route, or empty for any") })
-    StopField("Stop you travel toward", toward) { toward = it }
-    OutlinedTextField(
-        walk, { walk = it.filter { c -> c in '0'..'9' } }, Modifier.fillMaxWidth(),
-        label = { Text("Walk to the stop, minutes") },
+    fun removePlace(i: Int) {
+        places.removeAt(i)
+        for (j in windows.indices) windows[j] = windows[j].copy(place = placeAfterRemoval(windows[j].place, i))
+    }
+
+    Text("Places", style = MaterialTheme.typography.titleLarge)
+    places.forEachIndexed { i, p ->
+        PlaceCard(p, { places[i] = it }, if (places.size > 1) ({ removePlace(i) }) else null)
+    }
+    if (places.size < MAX_PLACES) TextButton(onClick = { places.add(PlaceDraft()) }) { Text("Add a place") }
+
+    HorizontalDivider()
+    Text("Commute windows", style = MaterialTheme.typography.titleLarge)
+    Text(
+        "In a window the widget shows that window's place, and refreshes every 30 s while the screen is on.",
+        style = MaterialTheme.typography.bodySmall,
     )
+    val names = places.mapIndexed { i, p -> p.name.trim().ifEmpty { "Place ${i + 1}" } }
+    windows.forEachIndexed { i, w ->
+        WindowCard(w, names, { windows[i] = it }, { windows.removeAt(i) })
+    }
+    if (windows.size < MAX_WINDOWS) TextButton(onClick = { windows.add(WindowDraft()) }) { Text("Add a window") }
+
     Button(onClick = {
-        val watch = WatchConfig(label.trim(), stopCode.trim(), route.trim(), toward.trim())
-        val config = Config(places = listOf(Place(name.trim(), watch, walk.toIntOrNull() ?: -1)))
+        val config = Config(places = places.map { it.toPlace() }, windows = windows.map { it.toWindow() })
         val error = ConfigCodec.validate(config)
         if (error != null) {
             status = error.text
@@ -129,11 +177,57 @@ private fun PlaceForm(store: Store) {
             scope.launch {
                 store.saveConfig(config)
                 RefreshWorker.now(context)
+                CommuteAlarm.arm(context)
                 status = "Saved"
             }
         }
     }) { Text("Save") }
     status?.let { Text(it) }
+}
+
+@Composable
+private fun PlaceCard(p: PlaceDraft, onChange: (PlaceDraft) -> Unit, onRemove: (() -> Unit)?) {
+    OutlinedTextField(p.name, { onChange(p.copy(name = it)) }, Modifier.fillMaxWidth(), label = { Text("Place name") })
+    OutlinedTextField(p.label, { onChange(p.copy(label = it)) }, Modifier.fillMaxWidth(), label = { Text("Label, e.g. to Wynyard Quarter") })
+    StopField("Stop code (the number on the pole)", p.stop) { onChange(p.copy(stop = it)) }
+    OutlinedTextField(p.route, { onChange(p.copy(route = it)) }, Modifier.fillMaxWidth(), label = { Text("Route, or empty for any") })
+    StopField("Stop you travel toward", p.toward) { onChange(p.copy(toward = it)) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            p.walk, { onChange(p.copy(walk = it.filter { c -> c in '0'..'9' })) }, Modifier.weight(1f),
+            label = { Text("Walk to the stop, minutes") },
+        )
+        if (onRemove != null) TextButton(onClick = onRemove) { Text("Remove") }
+    }
+    HorizontalDivider()
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WindowCard(w: WindowDraft, places: List<String>, onChange: (WindowDraft) -> Unit, onRemove: () -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        DAY_LETTERS.forEachIndexed { d, letter ->
+            FilterChip(
+                selected = w.days and (1 shl d) != 0,
+                onClick = { onChange(w.copy(days = w.days xor (1 shl d))) },
+                label = { Text(letter) },
+            )
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(w.start, { onChange(w.copy(start = it)) }, Modifier.weight(1f), label = { Text("From, e.g. 07:30") })
+        OutlinedTextField(w.end, { onChange(w.copy(end = it)) }, Modifier.weight(1f), label = { Text("To") })
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Shows")
+        // A tap moves to the next place: there are at most four.
+        TextButton(onClick = { onChange(w.copy(place = (w.place + 1) % places.size)) }) {
+            Text(places.getOrElse(w.place) { places.first() })
+        }
+        Spacer(Modifier.weight(1f))
+        TextButton(onClick = onRemove) { Text("Remove") }
+    }
+    HorizontalDivider()
 }
 
 @Composable
@@ -179,6 +273,11 @@ private fun SetupCheck(resumes: Int) = key(resumes) { // re-read on every resume
     }
     CheckRow("Alarms & reminders allowed", alarms.canScheduleExactAlarms()) {
         context.open(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+    }
+    CheckRow("Notifications allowed, for commute mode", CommuteService.notificationsOn(context)) {
+        context.startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+        )
     }
     CheckRow("Widget on a home screen", widgets.isNotEmpty(), null)
     Text(
