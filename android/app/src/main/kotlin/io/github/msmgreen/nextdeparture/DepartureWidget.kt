@@ -138,6 +138,9 @@ class DepartureWidget : AppWidgetProvider() {
             return r
         }
 
+        // A tap's refresh, for the commute notification's Refresh action too.
+        fun refreshIntent(context: Context): PendingIntent = broadcast(context, ACTION_REFRESH)
+
         private fun show(r: RemoteViews, vararg ids: Int) = ids.forEach { r.setViewVisibility(it, View.VISIBLE) }
 
         private fun hide(r: RemoteViews, vararg ids: Int) = ids.forEach { r.setViewVisibility(it, View.GONE) }

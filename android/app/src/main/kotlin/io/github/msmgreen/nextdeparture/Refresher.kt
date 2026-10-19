@@ -35,5 +35,6 @@ object Refresher {
             store.saveCache(next)
         }
         DepartureWidget.renderAll(context)
+        CommuteService.update(context)
     }
 }

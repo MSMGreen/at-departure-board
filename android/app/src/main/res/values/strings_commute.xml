@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="commute_starting">Commute mode</string>
+    <string name="commute_not_started">Commute mode didn\'t start — tap to start it</string>
+    <string name="channel_commute">Commute</string>
+    <string name="channel_commute_alerts">Commute alerts</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_not_today">Not today</string>
+</resources>

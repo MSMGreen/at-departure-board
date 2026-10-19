@@ -6,6 +6,10 @@
     <!-- Re-render the widget on time (widget spec 6). The user grants it, under
          Alarms & reminders; without it the render alarm is inexact. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Commute mode (widget spec 9, 11). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -45,8 +49,25 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- A commute window's start or end, from the one boundary alarm. -->
+        <receiver
+            android:name=".BoundaryReceiver"
+            android:exported="false" />
+
+        <!-- specialUse: no other type fits a service that keeps a process alive
+             to hear the screen turn on. Android 14+ requires a type. -->
+        <service
+            android:name=".CommuteService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Refreshes a transit departure while the screen is on during configured commute windows" />
+        </service>
     </application>
 
 </manifest>
